@@ -1,0 +1,533 @@
+[
+  {
+    "status": "draft",
+    "store_id": 12518,
+    "store_name": "Amazon US - 示例店铺（US）",
+    "marketplace_id": "ATVPDKIKX0DER",
+    "category_id": "",
+    "category_name": "请选择分类",
+    "product_type": "AUTO_PART",
+    "draft_no": "DRAFT-20260608-0001",
+    "msku": "",
+    "operation_type": 0,
+    "source_url": "",
+    "attributes": {},
+    "raw_form": {
+      "draft_no": "",
+      "store_id": "12518",
+      "marketplace": "ATVPDKIKX0DER",
+      "item_name": "",
+      "category": "",
+      "sale_type": "single",
+      "upc_exemption": "no",
+      "internal_category": "",
+      "source_url": "",
+      "parent_sku": "",
+      "seller_sku": "",
+      "product_id_type": "UPC",
+      "product_id": "",
+      "brand": "",
+      "manufacturer": "",
+      "attr_material": "",
+      "attr_color": "",
+      "attr_fit_type": "",
+      "attr_part_number": "",
+      "price": "",
+      "sale_price": "",
+      "sale_start_at": "",
+      "sale_end_at": "",
+      "quantity": "",
+      "condition_type": "",
+      "condition_note": "",
+      "product_description": "",
+      "bullet_point_1": "",
+      "bullet_point_2": "",
+      "bullet_point_3": "",
+      "bullet_point_4": "",
+      "bullet_point_5": "",
+      "fulfillment_availability": "",
+      "fulfillment_channel": "",
+      "merchant_shipping_group": "",
+      "generic_keyword": ""
+    },
+    "created_at": "2026-06-08 09:36:52",
+    "updated_at": "2026-06-08 09:36:52"
+  },
+  {
+    "status": "draft",
+    "store_id": 12655,
+    "store_account": "US1-重庆茁凯",
+    "store_full_name": "US1-重庆茁凯-US",
+    "store_name": "US1-重庆茁凯-US",
+    "seller_id": "A1EH5ARLHLPH2V",
+    "site_code": "US",
+    "site_name": "美国",
+    "marketplace_id": "ATVPDKIKX0DER",
+    "category_id": "107883988474920965",
+    "category_name": "Automotive(汽车用品) > Replacement Parts(替换零件) > Transmission & Drive Train > Clutches & Parts(零件) > Forks",
+    "category_path": "Automotive(汽车用品) > Replacement Parts(替换零件) > Transmission & Drive Train > Clutches & Parts(零件) > Forks",
+    "product_type": "AUTO_PART",
+    "browse_node_attributes": "{\"item_type_keyword\":\"automotive-clutch-forks\"}",
+    "draft_no": "DRAFT-20260611-0001",
+    "msku": "QCS-US-70106-0264-FBA",
+    "local_sku": "",
+    "operation_type": 0,
+    "source_url": "",
+    "attributes": {
+      "item_name": [
+        {
+          "value": "Transmission Dual Clutch",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "brand": [
+        {
+          "value": "Hututimo",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "manufacturer": [
+        {
+          "value": "Hututimo",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "product_description": [
+        {
+          "value": "1",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "bullet_point": [
+        {
+          "value": "1",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "purchasable_offer": [
+        {
+          "marketplace_id": "ATVPDKIKX0DER",
+          "our_price": [
+            {
+              "schedule": [
+                {
+                  "value_with_tax": 399.99
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "fulfillment_availability": [
+        {
+          "fulfillment_channel_code": "AMAZON_NA",
+          "quantity": 0,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "supplier_declared_has_product_identifier_exemption": [
+        {
+          "value": true,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "main_product_image_locator": [
+        {
+          "media_location": "http://127.0.0.1:8001/uploads/20260611/5350418b7be54197ae37940c2323b128.png",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "model_number": [
+        {
+          "value": "602000800",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "model_name": [
+        {
+          "value": "Transmission Dual Clutch",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "number_of_items": [
+        {
+          "value": 1,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "exterior_finish": [
+        {
+          "value": "s",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "part_number": [
+        {
+          "value": "602000800",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "is_assembly_required": [
+        {
+          "value": false,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "automotive_fit_type": [
+        {
+          "value": "vehicle_specific_fit",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "list_price": [
+        {
+          "value": 399.99,
+          "currency": "USD",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "item_package_weight": [
+        {
+          "value": 45,
+          "unit": "pounds",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "number_of_boxes": [
+        {
+          "value": 1,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "country_of_origin": [
+        {
+          "value": "CN",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "warranty_description": [
+        {
+          "value": "2 years",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "supplier_declared_dg_hz_regulation": [
+        {
+          "value": "not_applicable",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "contains_liquid_contents": [
+        {
+          "value": false,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "required_product_compliance_certificate": [
+        {
+          "value": "Not Applicable",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "included_components": [
+        {
+          "value": "Transmission Dual Clutch",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "item_package_dimensions": [
+        {
+          "length": {
+            "value": 15,
+            "unit": "inches"
+          },
+          "width": {
+            "value": 15,
+            "unit": "inches"
+          },
+          "height": {
+            "value": 11,
+            "unit": "inches"
+          },
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "item_type_keyword": [
+        {
+          "value": "automotive-clutch-forks",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ]
+    },
+    "raw_form": {
+      "draft_no": "",
+      "store_account": "US1-重庆茁凯",
+      "site_code": "US",
+      "store_id": "12655",
+      "marketplace": "ATVPDKIKX0DER",
+      "store_full_name": "US1-重庆茁凯-US",
+      "item_name": "Transmission Dual Clutch",
+      "category": "107883988474920965",
+      "category_path": "Automotive(汽车用品) > Replacement Parts(替换零件) > Transmission & Drive Train > Clutches & Parts(零件) > Forks",
+      "product_type": "AUTO_PART",
+      "browse_node_attributes": "{\"item_type_keyword\":\"automotive-clutch-forks\"}",
+      "sale_type": "single",
+      "upc_exemption": "yes",
+      "internal_category": "",
+      "local_sku": "",
+      "source_url": "",
+      "parent_sku": "QCS-US-70106-0264-FBA",
+      "product_id_type": "UPC",
+      "brand": "Hututimo",
+      "manufacturer": "Hututimo",
+      "attr_model_number": "602000800 ",
+      "attr_model_name": "Transmission Dual Clutch",
+      "attr_number_of_items": "1",
+      "attr_exterior_finish": "s",
+      "attr_part_number": "602000800 ",
+      "attr_is_assembly_required": "False",
+      "attr_included_components_other": " Ignition Coil",
+      "attr_automotive_fit_type": "vehicle_specific_fit",
+      "attr_list_price_currency": "USD",
+      "attr_list_price": "399.99",
+      "attr_item_package_length": "15",
+      "attr_item_package_length_unit": "inches",
+      "attr_item_package_width": "15",
+      "attr_item_package_width_unit": "inches",
+      "attr_item_package_height": "11",
+      "attr_item_package_height_unit": "inches",
+      "attr_item_package_weight": "45",
+      "attr_item_package_weight_unit": "pounds",
+      "attr_number_of_boxes": "1",
+      "attr_country_of_origin": "CN",
+      "attr_warranty_description_other": "",
+      "attr_contains_liquid_contents": "False",
+      "attr_required_product_compliance_certificate": "Not Applicable",
+      "price": "399.99",
+      "sale_price": "",
+      "sale_start_at": "",
+      "sale_end_at": "",
+      "quantity": "0",
+      "condition_type": "",
+      "condition_note": "",
+      "product_images": "[\"http://127.0.0.1:8001/uploads/20260611/5350418b7be54197ae37940c2323b128.png\"]",
+      "product_description": "1",
+      "bullet_point_1": "1",
+      "bullet_point_2": "",
+      "bullet_point_3": "",
+      "bullet_point_4": "",
+      "bullet_point_5": "",
+      "fulfillment_availability": "",
+      "fulfillment_channel": "AMAZON_NA",
+      "merchant_shipping_group": "",
+      "generic_keyword": "",
+      "attr_warranty_description[]": "2 years",
+      "attr_supplier_declared_dg_hz_regulation[]": "not_applicable"
+    },
+    "created_at": "2026-06-11 10:34:13",
+    "updated_at": "2026-06-11 10:34:13"
+  },
+  {
+    "status": "ready",
+    "store_id": 12655,
+    "store_account": "US1-重庆茁凯",
+    "store_full_name": "US1-重庆茁凯-US",
+    "store_name": "US1-重庆茁凯-US",
+    "seller_id": "A1EH5ARLHLPH2V",
+    "site_code": "US",
+    "site_name": "美国",
+    "marketplace_id": "ATVPDKIKX0DER",
+    "category_id": "107884193068875781",
+    "category_name": "Tools & Home Improvement(工具和家装) > Power & Hand Tools(工具) > Power Tool Parts & Accessories(零件和配件) > Vacuum & Dust Collector Accessories(配件) > Hoses",
+    "category_path": "Tools & Home Improvement(工具和家装) > Power & Hand Tools(工具) > Power Tool Parts & Accessories(零件和配件) > Vacuum & Dust Collector Accessories(配件) > Hoses",
+    "product_type": "HARDWARE_TUBING",
+    "browse_node_attributes": "{\"item_type_keyword\":\"vacuum-and-dust-collector-hoses\"}",
+    "draft_no": "DRAFT-20260611-0002",
+    "msku": "QCS-US-23049-fake",
+    "local_sku": "",
+    "operation_type": 0,
+    "source_url": "",
+    "attributes": {
+      "item_name": [
+        {
+          "value": "D27/32X5M Dust Extractor Hose",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "brand": [
+        {
+          "value": "Hututimo",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "manufacturer": [
+        {
+          "value": "Hututimo",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "product_description": [
+        {
+          "value": "1",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "bullet_point": [
+        {
+          "value": "1",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "purchasable_offer": [
+        {
+          "marketplace_id": "ATVPDKIKX0DER",
+          "our_price": [
+            {
+              "schedule": [
+                {
+                  "value_with_tax": 92
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "fulfillment_availability": [
+        {
+          "fulfillment_channel_code": "AMAZON_NA",
+          "quantity": 1,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "supplier_declared_has_product_identifier_exemption": [
+        {
+          "value": true,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "model_number": [
+        {
+          "value": "D27/32X5M Dust Extractor Hose",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "model_name": [
+        {
+          "value": "D27/32X5M Dust Extractor Hose",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "number_of_items": [
+        {
+          "value": 1,
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "list_price": [
+        {
+          "value": 92,
+          "currency": "USD",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "item_package_weight": [
+        {
+          "value": 1,
+          "unit": "pounds",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "country_of_origin": [
+        {
+          "value": "CN",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "supplier_declared_dg_hz_regulation": [
+        {
+          "value": "not_applicable",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "included_components": [
+        {
+          "value": "D27/32X5M Dust Extractor Hose",
+          "language_tag": "en_US",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ],
+      "item_type_keyword": [
+        {
+          "value": "vacuum-and-dust-collector-hoses",
+          "marketplace_id": "ATVPDKIKX0DER"
+        }
+      ]
+    },
+    "raw_form": {
+      "draft_no": "",
+      "store_account": "US1-重庆茁凯",
+      "site_code": "US",
+      "store_id": "12655",
+      "marketplace": "ATVPDKIKX0DER",
+      "store_full_name": "US1-重庆茁凯-US",
+      "item_name": "D27/32X5M Dust Extractor Hose",
+      "category": "107884193068875781",
+      "category_path": "Tools & Home Improvement(工具和家装) > Power & Hand Tools(工具) > Power Tool Parts & Accessories(零件和配件) > Vacuum & Dust Collector Accessories(配件) > Hoses",
+      "product_type": "HARDWARE_TUBING",
+      "browse_node_attributes": "{\"item_type_keyword\":\"vacuum-and-dust-collector-hoses\"}",
+      "sale_type": "single",
+      "upc_exemption": "yes",
+      "internal_category": "",
+      "local_sku": "",
+      "source_url": "",
+      "parent_sku": "QCS-US-23049-fake",
+      "product_id_type": "UPC",
+      "brand": "Hututimo",
+      "manufacturer": "Hututimo",
+      "attr_model_number": "D27/32X5M Dust Extractor Hose",
+      "attr_model_name": "D27/32X5M Dust Extractor Hose",
+      "attr_number_of_items": "1",
+      "attr_list_price_currency": "USD",
+      "attr_list_price": "92",
+      "attr_item_package_weight": "1",
+      "attr_item_package_weight_unit": "pounds",
+      "attr_country_of_origin": "CN",
+      "price": "92",
+      "sale_price": "",
+      "sale_start_at": "",
+      "sale_end_at": "",
+      "quantity": "1",
+      "condition_type": "",
+      "condition_note": "",
+      "product_images": "[]",
+      "product_description": "1",
+      "bullet_point_1": "1",
+      "bullet_point_2": "",
+      "bullet_point_3": "",
+      "bullet_point_4": "",
+      "bullet_point_5": "",
+      "fulfillment_availability": "",
+      "fulfillment_channel": "AMAZON_NA",
+      "merchant_shipping_group": "",
+      "generic_keyword": "",
+      "attr_supplier_declared_dg_hz_regulation[]": "not_applicable"
+    },
+    "created_at": "2026-06-11 11:01:49",
+    "updated_at": "2026-06-11 11:01:49"
+  }
+]

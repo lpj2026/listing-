@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Amazon 创建产品</title>
+    <link rel="stylesheet" href="styles.css?v=20260611-6" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">刊</span>
+        <span>自研刊登系统</span>
+      </div>
+      <nav>
+        <a class="active" href="create-product">产品</a>
+        <a href="#">订单</a>
+        <a href="#">客服</a>
+        <a href="#">托管模式</a>
+      </nav>
+      <div class="account">imangmang</div>
+    </header>
+
+    <main class="page">
+      <div class="breadcrumb">Amazon / 创建产品</div>
+
+      <div class="actions sticky-actions">
+        <button class="btn secondary" id="saveDraftTop">存为模板</button>
+        <button class="btn secondary">一键翻译</button>
+        <button class="btn warning">引用产品</button>
+        <button class="btn primary-outline" id="saveOnlyTop">保存</button>
+        <button class="btn primary" id="publishTop">保存并发布</button>
+      </div>
+
+      <section class="notice">
+        <strong>Amazon 新刊登流程：</strong>
+        <ol>
+          <li>先选择店铺和产品分类，系统会根据分类加载对应商品类型。</li>
+          <li>当前页面先按店小秘格式实现模板，字段数据后续按领星 API Schema 替换。</li>
+          <li>建议先保存草稿，确认字段后再发布。</li>
+        </ol>
+      </section>
+
+      <section class="workspace">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>草稿列表</h2>
+            <button type="button" id="refreshDrafts">刷新</button>
+          </div>
+          <div class="record-list" id="draftList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>刊登任务</h2>
+            <button type="button" id="refreshTasks">刷新</button>
+          </div>
+          <div class="record-list" id="taskList"></div>
+        </div>
+      </section>
+
+      <form id="productForm">
+        <input type="hidden" name="draft_no" id="draftNo" />
+        <section class="card" id="basic-info">
+          <h2>基本信息</h2>
+          <div class="form-grid">
+            <label class="required">
+              店铺账号
+              <select name="store_account" id="accountSelect">
+                <option value="">请选择店铺账号</option>
+              </select>
+            </label>
+            <label class="required">
+              站点选择
+              <select name="site_code" id="siteSelect">
+                <option value="">请选择站点</option>
+              </select>
+            </label>
+            <input type="hidden" name="store_id" id="storeId" />
+            <input type="hidden" name="marketplace" id="marketplaceId" />
+            <input type="hidden" name="store_full_name" id="storeFullName" />
+            <label class="wide required">
+              产品标题
+              <input name="item_name" maxlength="200" placeholder="请输入产品标题" />
+              <span class="counter">0 / 200</span>
+            </label>
+            <label class="required">
+              产品分类
+              <div class="inline-control category-picker-row">
+                <input
+                  type="text"
+                  id="categoryDisplay"
+                  readonly
+                  placeholder="请选择产品分类"
+                  class="category-display-input"
+                />
+                <input type="hidden" name="category" id="categoryId" />
+                <input type="hidden" name="category_path" id="categoryPath" />
+                <input type="hidden" name="product_type" id="productType" />
+                <input type="hidden" name="browse_node_attributes" id="browseNodeAttributes" />
+                <button class="btn blue" type="button" id="openCategoryPicker">选择分类</button>
+              </div>
+              <p class="field-hint" id="categoryMeta"></p>
+            </label>
+            <label>
+              售卖形式
+              <div class="radio-row">
+                <label><input type="radio" name="sale_type" value="single" checked /> 单品</label>
+                <label><input type="radio" name="sale_type" value="variation" /> 多变种</label>
+              </div>
+            </label>
+            <label>
+              UPC豁免
+              <div class="radio-row">
+                <label><input type="radio" name="upc_exemption" value="yes" /> 是</label>
+                <label><input type="radio" name="upc_exemption" value="no" checked /> 否</label>
+              </div>
+            </label>
+          </div>
+        </section>
+
+        <section class="card hidden" id="variation-info">
+          <h2>变种信息</h2>
+          <div class="form-rows">
+            <div class="form-row required" id="variationThemeRow">
+              <div class="row-label">变种主题</div>
+              <div class="row-content">
+                <div id="variationThemeWrap" class="variation-theme-wrap"></div>
+                <p class="field-hint" id="variationThemeHint">请先选择产品分类，系统将按亚马逊 Schema 加载可选变种主题。</p>
+                <p class="field-error" id="variationThemeError">请选择变种主题</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="dianxiaomi-info">
+          <h2>店小秘信息 <small>（注：下列信息，仅在店小秘系统生效）</small></h2>
+          <div class="form-rows">
+            <div class="form-row">
+              <div class="row-label">店小秘分类</div>
+              <div class="row-content">
+                <div class="inline-control">
+                  <select name="internal_category">
+                    <option value="">选择分类</option>
+                    <option>汽配产品</option>
+                    <option>家居产品</option>
+                  </select>
+                  <button class="link-button" type="button">管理分类</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="row-label">本地 SKU</div>
+              <div class="row-content">
+                <input
+                  name="local_sku"
+                  id="localSkuInput"
+                  placeholder="领星本地 SKU，刊登成功后自动配对（可选）"
+                />
+                <p class="field-hint">填写领星 ERP 中的本地 SKU，Listing 同步后会自动完成 MSKU 配对。</p>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="row-label">来源URL</div>
+              <div class="row-content">
+                <div class="url-row">
+                  <span>1</span>
+                  <input
+                    name="source_url"
+                    placeholder="用于记录供货渠道URL，方便采购。仅在店小秘显示，不会同步到平台！"
+                  />
+                  <button type="button" class="link-button">访问</button>
+                  <span class="divider">|</span>
+                  <button type="button" class="link-button">找货源</button>
+                  <button type="button" class="icon-button">+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="product-info">
+          <h2>产品信息</h2>
+          <div class="form-rows">
+            <div class="form-row required" id="parentSkuRow">
+              <div class="row-label">Parent SKU</div>
+              <div class="row-content">
+                <div class="input-with-counter">
+                  <input
+                    name="parent_sku"
+                    id="parentSkuInput"
+                    maxlength="40"
+                    placeholder="示例：华为P60红色手机壳，SKU为HuaweiP60-red，Parent SKU为HuaweiP60"
+                  />
+                  <span class="counter" data-for="parent_sku">0 / 40</span>
+                </div>
+                <p class="field-hint">
+                  可自定义填写内容，方便卖家在后台识别是什么产品，该内容不在平台商城展示。
+                  <a href="#" class="hint-link">详细说明</a>
+                </p>
+                <p class="field-error" id="parentSkuError">请填写Parent SKU</p>
+              </div>
+            </div>
+
+            <div class="form-row required" id="productIdRow">
+              <div class="row-label">
+                产品ID
+                <span class="help-icon" title="填写商品的 UPC、EAN 或 GTIN 编码">?</span>
+              </div>
+              <div class="row-content">
+                <div class="product-id-row">
+                  <select name="product_id_type" id="productIdType" class="product-id-type">
+                    <option value="UPC">UPC</option>
+                    <option value="EAN">EAN</option>
+                    <option value="GTIN">GTIN</option>
+                  </select>
+                  <input name="product_id" id="productIdInput" placeholder="必填项, Product ID" />
+                  <button class="btn blue" type="button" id="autoFetchProductId">自动获取</button>
+                </div>
+                <p class="field-error" id="productIdError">请填写Product ID</p>
+              </div>
+            </div>
+
+            <div class="form-row required">
+              <div class="row-label">
+                品牌
+                <span class="help-icon" title="填写商品品牌名称">?</span>
+              </div>
+              <div class="row-content">
+                <div class="input-with-counter brand-input-row">
+                  <input name="brand" id="brandInput" maxlength="50" placeholder="请输入品牌" />
+                  <span class="counter" data-for="brand">0 / 50</span>
+                  <button type="button" class="refresh-icon" title="刷新品牌">↻</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row required" id="manufacturerRow">
+              <div class="row-label">
+                制造商
+                <span class="help-icon" title="通常与品牌相同，可手动修改">?</span>
+              </div>
+              <div class="row-content">
+                <div class="input-with-counter">
+                  <input
+                    name="manufacturer"
+                    id="manufacturerInput"
+                    maxlength="50"
+                    placeholder="请输入制造商，默认与品牌一致"
+                  />
+                  <span class="counter" data-for="manufacturer">0 / 50</span>
+                </div>
+                <p class="field-error" id="manufacturerError">请填写制造商</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card dxm-card" id="product-attributes">
+          <div class="section-head dxm-section-head">
+            <h2 class="dxm-section-title">产品属性</h2>
+            <div class="section-tools dxm-section-tools">
+              <button type="button" class="dxm-tool-btn">引用现有产品</button>
+              <select class="dxm-tool-select">
+                <option>请选择引用模板</option>
+              </select>
+            </div>
+          </div>
+          <div class="dxm-attr-toolbar">
+            <div class="dxm-attr-toolbar-left">
+              <span class="dxm-attr-prefix">产品属性：</span>
+              <button type="button" class="dxm-more-link" id="toggleMoreAttributes">更多属性 ▾</button>
+            </div>
+            <div class="dxm-search-wrap">
+              <input placeholder="输入属性名称搜索" id="attributeSearchInput" />
+              <span class="dxm-search-icon" aria-hidden="true">⌕</span>
+            </div>
+          </div>
+          <div class="dxm-attr-meta" id="attributeMeta"></div>
+          <div class="form-rows dxm-attr-rows" id="attributeFields"></div>
+        </section>
+
+        <section class="card" id="price-info">
+          <h2>价格信息</h2>
+          <div class="form-grid compact">
+            <label class="required">价格 <input name="price" type="number" step="0.01" placeholder="请输入价格" /></label>
+            <label>促销价 <input name="sale_price" type="number" step="0.01" placeholder="请输入促销价" /></label>
+            <label>促销开始时间 <input name="sale_start_at" type="date" /></label>
+            <label>促销结束时间 <input name="sale_end_at" type="date" /></label>
+            <label class="required">产品数量 <input name="quantity" type="number" placeholder="请输入产品数量" /></label>
+            <label>物品状况
+              <select name="condition_type">
+                <option value="">请选择物品状况</option>
+                <option value="new_new">New</option>
+                <option value="used_like_new">Used - Like New</option>
+              </select>
+            </label>
+            <label class="wide">状况描述 <textarea name="condition_note" maxlength="2000"></textarea></label>
+          </div>
+        </section>
+
+        <section class="card" id="product-images">
+          <div class="section-head">
+            <h2>产品图片</h2>
+            <div class="image-action-bar">
+              <button type="button" class="image-action-btn">添加水印 <span class="arrow">▼</span></button>
+              <button type="button" class="image-action-btn">编辑图片</button>
+              <button type="button" class="image-action-btn">导出全部图片</button>
+            </div>
+          </div>
+          <div class="form-rows">
+            <div class="form-row required">
+              <div class="row-label">产品图片</div>
+              <div class="row-content">
+                <div class="image-upload-row">
+                  <div class="dropdown-wrap">
+                    <button type="button" class="select-image-btn" id="selectImageBtn">
+                      选择图片 <span class="arrow">▼</span>
+                    </button>
+                    <div class="dropdown-menu" id="imageSourceMenu">
+                      <button type="button" data-source="local">本地图片</button>
+                      <button type="button" data-source="space">空间图片</button>
+                      <button type="button" data-source="network">网络图片</button>
+                      <button type="button" data-source="reference">引用采集图片</button>
+                    </div>
+                  </div>
+                  <input type="file" id="localImageInput" accept="image/*" multiple hidden />
+                  <p class="image-hint">
+                    <span class="hint-label">说明</span>
+                    本地图片会自动上传到图床并转为公网链接。图片最多 9 张，已选用 <span id="imageSelectedCount">0</span> 张，建议至少 3 张。
+                  </p>
+                </div>
+                <div class="image-grid" id="imageGrid"></div>
+                <input type="hidden" name="product_images" id="productImagesData" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="description-info">
+          <h2>描述信息</h2>
+          <label class="required full-label">
+            产品描述
+            <div class="editor-toolbar">源码 | 加粗 | 斜体 | 列表 | AI生成</div>
+            <textarea name="product_description" class="editor" maxlength="2000"></textarea>
+          </label>
+          <label class="required full-label">
+            Bullet Point
+            <textarea name="bullet_point_1" maxlength="500"></textarea>
+            <textarea name="bullet_point_2" maxlength="500"></textarea>
+            <textarea name="bullet_point_3" maxlength="500"></textarea>
+            <textarea name="bullet_point_4" maxlength="500"></textarea>
+            <textarea name="bullet_point_5" maxlength="500"></textarea>
+          </label>
+        </section>
+
+        <section class="card" id="shipping-info">
+          <h2>运输信息</h2>
+          <div class="form-grid compact">
+            <label>处理时间 <input name="fulfillment_availability" placeholder="请输入" /></label>
+            <label>配送渠道
+              <select name="fulfillment_channel">
+                <option value="">请选择</option>
+                <option value="DEFAULT">FBM</option>
+                <option value="AMAZON_NA">FBA</option>
+              </select>
+            </label>
+            <label>运费模板
+              <div class="inline-control">
+                <select name="merchant_shipping_group">
+                  <option value="">请选择</option>
+                  <option value="template_mock_1">标准配送模板</option>
+                </select>
+                <button type="button">刷新</button>
+              </div>
+            </label>
+          </div>
+        </section>
+
+        <section class="card" id="keyword-info">
+          <h2>关键词信息</h2>
+          <label class="full-label">
+            Search Terms
+            <textarea name="generic_keyword" maxlength="250"></textarea>
+          </label>
+        </section>
+
+        <div class="actions bottom-actions">
+          <button class="btn secondary" type="button" id="saveDraftBottom">存为模板</button>
+          <button class="btn secondary" type="button">一键翻译</button>
+          <button class="btn warning" type="button">引用产品</button>
+          <button class="btn primary-outline" type="button" id="saveOnlyBottom">保存</button>
+          <button class="btn primary" type="button" id="publishBottom">保存并发布</button>
+        </div>
+      </form>
+    </main>
+
+    <aside class="side-nav">
+      <a href="#basic-info">基本信息</a>
+      <a href="#variation-info" class="hidden" id="variationNavLink">变种信息</a>
+      <a href="#dianxiaomi-info">店小秘信息</a>
+      <a href="#product-info">产品信息</a>
+      <a href="#product-attributes">产品属性</a>
+      <a href="#price-info">价格信息</a>
+      <a href="#product-images">产品图片</a>
+      <a href="#description-info">描述信息</a>
+      <a href="#shipping-info">运输信息</a>
+      <a href="#keyword-info">关键词信息</a>
+    </aside>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="category-modal hidden" id="categoryModal" aria-hidden="true">
+      <div class="category-modal-mask" id="categoryModalMask"></div>
+      <div class="category-modal-panel" role="dialog" aria-labelledby="categoryModalTitle">
+        <div class="category-modal-head">
+          <h3 id="categoryModalTitle">选择类目</h3>
+          <button type="button" class="category-modal-close" id="closeCategoryPicker">×</button>
+        </div>
+        <div class="category-modal-search">
+          <input type="text" id="categorySearchInput" placeholder="输入分类名称搜索（演示数据支持）" />
+        </div>
+        <div class="category-modal-tip" id="categorySourceTip"></div>
+        <div class="category-breadcrumb" id="categoryBreadcrumb">请选择分类</div>
+        <div class="category-recommend" id="categoryRecommend">平台推荐产品类型：-</div>
+        <div class="category-columns" id="categoryColumns"></div>
+        <div class="category-search-results hidden" id="categorySearchResults"></div>
+        <div class="category-modal-foot">
+          <button type="button" class="btn secondary" id="cancelCategoryPicker">取消</button>
+          <button type="button" class="btn primary" id="confirmCategoryPicker" disabled>确定</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js?v=20260611-5"></script>
+  </body>
+</html>
