@@ -27,6 +27,7 @@ from publish_worker import schedule_publish_poll, start_publish_worker
 from schema_service import get_schema, get_variation_themes
 from seller_service import list_stores
 from shipping_service import list_merchant_shipping_groups
+from listing_tools import generate_plans, score_listing as ai_score_listing
 from sync_worker import check_listing_and_pair, pair_task_now, schedule_listing_sync, start_listing_sync_worker
 from task_store import ACTIVE_TASK_STATUSES, apply_poll_result, create_task, get_task, load_tasks, update_task
 
@@ -271,7 +272,11 @@ class ProductHandler(SimpleHTTPRequestHandler):
             binary_response(self, file_path.read_bytes(), mime or "application/octet-stream")
             return
 
-        if path in {"/", "/create-product", "/create_product"}:
+        if path in {"/", "/create-product", "/create_product", "/listing-tools", "/listing_tools"}:
+            if path in {"/listing-tools", "/listing_tools"}:
+                self.path = "/listing-tools.html"
+                super().do_GET()
+                return
             self.path = "/index.html"
 
         super().do_GET()
@@ -518,6 +523,28 @@ class ProductHandler(SimpleHTTPRequestHandler):
                     "data": task,
                 },
             )
+            return
+
+        # ── Listing Tools ──────────────────────────────────────
+
+        if parsed.path == "/api/listing/generate":
+            payload = read_body(self)
+            try:
+                result = generate_plans(payload)
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+            json_response(self, {"code": 1, "data": result})
+            return
+
+        if parsed.path == "/api/listing/score":
+            payload = read_body(self)
+            try:
+                result = ai_score_listing(payload)
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+            json_response(self, {"code": 1, "data": result})
             return
 
         json_response(self, {"code": 0, "message": "接口不存在"}, status=404)

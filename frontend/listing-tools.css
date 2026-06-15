@@ -1,0 +1,102 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; font-size: 14px; color: #333; background: #f5f6f8; }
+
+/* ── Topbar ──────────────────────────── */
+.topbar { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 32px; height: 56px; padding: 0 24px; background: #2185d0; color: #fff; }
+.topbar .brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.topbar .logo { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #fff; color: #2185d0; border-radius: 4px; font-size: 16px; }
+.topbar nav { display: flex; gap: 0; }
+.topbar nav a { color: rgba(255,255,255,.75); text-decoration: none; padding: 8px 16px; border-radius: 4px; font-size: 13px; transition: .2s; }
+.topbar nav a:hover { color: #fff; background: rgba(255,255,255,.1); }
+.topbar nav a.active { color: #fff; font-weight: 600; background: rgba(255,255,255,.15); }
+
+/* ── Layout ───────────────────────────── */
+.page { max-width: 960px; margin: 0 auto; padding: 20px 24px 60px; }
+.breadcrumb { color: #999; font-size: 13px; margin-bottom: 16px; }
+
+/* ── Mode Tabs ────────────────────────── */
+.mode-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #e7eaf0; }
+.mode-tab { padding: 10px 24px; border: none; background: none; font-size: 15px; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: .2s; }
+.mode-tab:hover { color: #333; }
+.mode-tab.active { color: #2185d0; font-weight: 600; border-bottom-color: #2185d0; }
+
+.mode-content.hidden { display: none; }
+
+/* ── Cards ────────────────────────────── */
+.card { background: #fff; border: 1px solid #e7eaf0; padding: 20px 24px; margin-bottom: 16px; }
+.card h2 { font-size: 16px; margin-bottom: 4px; }
+.section-desc { color: #999; font-size: 12px; margin-bottom: 16px; }
+
+/* ── Form ─────────────────────────────── */
+.form-section { margin-bottom: 16px; }
+.form-section h3 { font-size: 13px; color: #555; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dashed #eef1f5; }
+.form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-section label { display: block; font-size: 12px; color: #666; margin-bottom: 10px; }
+.form-section input, .form-section textarea, .form-section select { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; font-family: inherit; }
+.form-section textarea { resize: vertical; }
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.checkbox-group label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-bottom: 0; }
+.checkbox-group input { width: auto; margin-top: 0; }
+
+/* ── Buttons ──────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px 20px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; cursor: pointer; background: #fff; transition: .2s; }
+.btn:hover { border-color: #aaa; }
+.btn.primary { background: #2185d0; color: #fff; border-color: #2185d0; }
+.btn.primary:hover { background: #1a6fb5; }
+.btn-lg { padding: 12px 32px; font-size: 15px; width: 100%; margin-top: 12px; }
+.btn-sm { padding: 4px 12px; font-size: 11px; }
+.status-text { display: inline-block; margin-left: 12px; font-size: 12px; color: #999; }
+.status-text.show { display: inline-block; }
+
+/* ── Plans ────────────────────────────── */
+.plan-card { background: #fff; border: 1px solid #e7eaf0; padding: 0; margin-bottom: 20px; }
+.plan-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: #fafbfc; border-bottom: 1px solid #eef1f5; }
+.plan-num { font-size: 20px; font-weight: 700; color: #2185d0; }
+.plan-strategy { font-size: 15px; font-weight: 600; }
+.plan-reasoning { margin: 10px 20px 0; padding: 10px 14px; background: #f0f5ff; border-left: 3px solid #2185d0; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+.plan-meta { display: flex; gap: 24px; margin: 10px 20px; font-size: 12px; color: #888; }
+.plan-meta span { display: flex; align-items: baseline; gap: 4px; }
+.plan-meta strong { color: #555; }
+.plan-body { padding: 16px 20px; }
+.plan-field { margin-bottom: 14px; }
+.plan-field-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.plan-field-value { font-size: 13px; color: #333; line-height: 1.7; word-break: break-word; }
+.plan-actions { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid #eef1f5; background: #fafbfc; }
+
+/* ── Diagnosis ──────────────────────────── */
+.diag-header { display: flex; align-items: center; gap: 18px; padding: 20px 24px; background: #fff; border: 2px solid #e7eaf0; border-radius: 8px; margin-bottom: 20px; }
+.diag-score { font-size: 48px; font-weight: 800; line-height: 1; }
+.diag-grade { font-size: 22px; font-weight: 600; }
+.diag-summary { color: #666; font-size: 13px; flex: 1; }
+.diag-priority { background: #fff; border: 1px solid #e7eaf0; padding: 16px 20px; margin-bottom: 20px; }
+.diag-priority h3 { font-size: 14px; color: #cf1322; margin-bottom: 8px; }
+.diag-priority li { font-size: 13px; margin-bottom: 4px; color: #555; margin-left: 18px; }
+
+.dim-card { background: #fff; border: 1px solid #e7eaf0; margin-bottom: 14px; }
+.dim-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: #fafbfc; border-bottom: 1px solid #eef1f5; }
+.dim-name { font-size: 14px; font-weight: 600; }
+.dim-score-badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.dim-positives { padding: 8px 18px; font-size: 12px; color: #389e0d; background: #f6ffed; }
+.dim-positives::before { content: "✓ 亮点: "; font-weight: 600; }
+.dim-issues { padding: 0; }
+.dim-issue { padding: 14px 18px; border-bottom: 1px solid #f5f5f5; }
+.dim-issue:last-child { border-bottom: none; }
+.issue-title { font-size: 13px; font-weight: 600; color: #cf1322; margin-bottom: 6px; }
+.issue-title::before { content: "✗ "; }
+.issue-detail { display: grid; grid-template-columns: 60px 1fr; gap: 6px; font-size: 12px; line-height: 1.6; margin-bottom: 3px; }
+.issue-detail-label { color: #999; }
+.issue-detail-value { color: #555; }
+
+/* ── Toast ─────────────────────────────── */
+.toast { position: fixed; bottom: 30px; right: 30px; padding: 12px 24px; background: #333; color: #fff; border-radius: 6px; font-size: 13px; opacity: 0; transform: translateY(10px); transition: .3s; pointer-events: none; z-index: 9999; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+.hidden { display: none !important; }
+
+/* ── Responsive ────────────────────────── */
+@media (max-width: 768px) {
+  .form-grid-3, .form-grid-2 { grid-template-columns: 1fr; }
+  .plan-meta { flex-direction: column; gap: 6px; }
+  .diag-header { flex-direction: column; align-items: flex-start; }
+}

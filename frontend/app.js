@@ -2693,6 +2693,22 @@ async function init() {
   }
   await loadSchema();
   await Promise.all([loadDrafts(), loadTasks()]);
+
+  // Check for listing content from listing-tools page
+  const pending = localStorage.getItem("listing_apply");
+  if (pending) {
+    try {
+      const data = JSON.parse(pending);
+      if (window.confirm("检测到 Listing 生成器暂存的内容，是否填入产品表单？\n\n标题: " + (data.title || "").substring(0, 80) + "...")) {
+        setFieldValue("item_name", data.title || "");
+        (data.bullets || []).forEach((b, i) => setFieldValue("bullet_point_" + (i + 1), b || ""));
+        setFieldValue("product_description", data.description || "");
+        setFieldValue("generic_keyword", data.search_terms || "");
+        showToast("已填入生成器内容");
+      }
+    } catch (e) { /* ignore */ }
+    localStorage.removeItem("listing_apply");
+  }
 }
 
 init().catch((error) => showToast(error.message));
