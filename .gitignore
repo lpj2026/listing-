@@ -9,6 +9,8 @@ data/uploads/
 data/schema_cache/
 data/category_cache/
 data/store.db
+data/store.db-shm
+data/store.db-wal
 *.log
 .DS_Store
 app.pid
