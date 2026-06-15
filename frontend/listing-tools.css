@@ -101,6 +101,16 @@ body { font-family: -apple-system, "Microsoft YaHei", sans-serif; font-size: 14p
 /* ── Optimize Bar ───────────────────── */
 .optimize-bar { padding: 16px 0; text-align: center; }
 
+/* ── Score Compare ────────────────── */
+.score-compare { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: #fafbfc; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.score-compare-item { text-align: center; }
+.score-compare-item.before .score-compare-num { color: #cf1322; }
+.score-compare-item.after .score-compare-num { color: #389e0d; }
+.score-compare-num { font-size: 36px; font-weight: 800; line-height: 1; }
+.score-compare-label { font-size: 12px; color: #999; margin-top: 4px; }
+.score-compare-arrow { font-size: 24px; color: #2185d0; font-weight: 700; }
+.score-compare-reason { width: 100%; font-size: 12px; color: #666; line-height: 1.6; padding-top: 8px; border-top: 1px solid #eef1f5; }
+
 /* ── Optimization Cards ─────────────── */
 .opt-strategy { padding: 14px 18px; background: #f0f5ff; border-left: 3px solid #2185d0; border-radius: 4px; font-size: 13px; line-height: 1.7; margin-bottom: 14px; }
 .opt-card { background: #fff; border: 1px solid #e7eaf0; margin-bottom: 12px; }
@@ -108,6 +118,7 @@ body { font-family: -apple-system, "Microsoft YaHei", sans-serif; font-size: 14p
 .opt-num { font-weight: 700; color: #2185d0; font-size: 14px; }
 .opt-target { font-weight: 600; font-size: 13px; color: #333; }
 .opt-issue { padding: 10px 16px; font-size: 13px; color: #cf1322; background: #fff1f0; }
+.opt-original { padding: 8px 16px; font-size: 12px; color: #999; background: #fafafa; text-decoration: line-through; }
 .opt-detail { padding: 10px 16px; font-size: 12px; line-height: 1.8; }
 .opt-detail-row { margin-bottom: 4px; }
 .opt-content { padding: 10px 16px; background: #f6ffed; font-size: 13px; line-height: 1.7; border-top: 1px solid #eef1f5; }

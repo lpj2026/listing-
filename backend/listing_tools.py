@@ -197,22 +197,35 @@ Provide detailed diagnostic in Chinese, following the JSON format exactly."""
 
 # ── Combined: Score + Targeted Optimization ─────────────────────────
 
-OPTIMIZE_SYSTEM = """You are an Amazon listing optimization strategist. You receive a product's current listing content AND its scoring diagnostic. Your job is to generate targeted improvement suggestions for each weakness found in the scoring, and also produce 1-2 optimized versions of the listing.
+OPTIMIZE_SYSTEM = """You are an Amazon listing optimization expert. You receive a listing AND its scoring diagnostic. Your job is to fix EVERY issue found in the scoring and produce a measurably better listing.
 
-For each major issue identified in the scoring:
-1. Explain WHY this needs to be fixed (Amazon algorithm + buyer psychology)
-2. What BENEFIT the fix brings (search ranking, CTR, conversion rate, etc.)
-3. Provide the optimized version
+CRITICAL RULES — VIOLATION WILL CAUSE REJECTION:
+1. Read EVERY issue in the scoring diagnostic carefully. You MUST fix ALL of them.
+2. For each fix, the "optimized_content" field MUST contain the ACTUAL improved text — not a generic suggestion. Show the concrete rewritten copy.
+3. The "optimized_listing" at the end MUST incorporate ALL fixes. It is a complete, ready-to-use listing. Every weakness from the scoring must be addressed in this listing.
+4. Title MUST be 150-200 characters, start with core keyword, include brand context.
+5. Bullet Points MUST be exactly 5, each 80-250 chars, benefit-driven, with category-relevant prefixes.
+6. Description MUST use HTML formatting (<b>, <ul>, <li>).
+7. Search terms MUST NOT repeat words already in title.
+8. NO prohibited words: "best", "#1", "guaranteed", "risk free", "FDA approved", "miracle", etc.
+9. The optimized listing MUST score higher than the original. If the original scored 40, your optimized version should reach at least 75+.
+10. Think step by step: (a) list all issues found, (b) for each issue, write the fix, (c) verify the fix doesn't create new problems, (d) assemble the complete optimized listing.
 
-Output ONLY valid JSON:
+Output ONLY valid JSON, no markdown fences:
 {
+  "score_comparison": {
+    "original_score": 40,
+    "estimated_new_score": 82,
+    "why_improved": "具体说明哪些改进项贡献了分数提升"
+  },
   "optimizations": [
     {
-      "target": "title / bullets / description / keywords / compliance",
-      "issue_summary": "当前问题简述",
-      "why_optimize": "为什么必须优化（算法+买家心理角度）",
-      "expected_benefit": "优化后的预期效果",
-      "optimized_content": "优化后的文案"
+      "target": "title",
+      "original_text": "原始标题原文",
+      "issue_summary": "当前问题",
+      "why_optimize": "为什么必须优化",
+      "expected_benefit": "优化后预期效果",
+      "optimized_content": "完整优化后的新标题"
     }
   ],
   "optimized_listing": {
@@ -241,7 +254,9 @@ Grade: {scoring_result.get('overall_grade', 'N/A')}
 Dimensions:
 {_format_dimensions_for_prompt(scoring_result.get('dimensions', {}))}
 
-Based on the above scoring, generate targeted optimizations for each weakness. Focus on WHY each fix matters and WHAT benefit it brings."""
+IMPORTANT: The original listing scored {scoring_result.get('overall_score', '?')}/100. Your optimized version MUST address EVERY issue listed above. The optimized content in each optimization entry MUST be the actual rewritten text — not a suggestion, not a template, but the concrete copy. The final optimized_listing MUST incorporate ALL fixes and should score 75+/100.
+
+Now generate the complete optimization plan with all fixes applied."""
 
     messages = [
         {"role": "system", "content": OPTIMIZE_SYSTEM},
@@ -252,6 +267,7 @@ Based on the above scoring, generate targeted optimizations for each weakness. F
     result.setdefault("optimizations", [])
     result.setdefault("optimized_listing", {})
     result.setdefault("overall_strategy", "")
+    result.setdefault("score_comparison", {})
     return result
 
 

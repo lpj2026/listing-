@@ -265,18 +265,36 @@ function renderOptimizations(data) {
   const container = document.querySelector("#optimizeResult");
   container.classList.remove("hidden");
 
+  // Score comparison
+  const sc = data.score_comparison || {};
+  const compHtml = sc.original_score ? `
+    <div class="score-compare">
+      <div class="score-compare-item before">
+        <div class="score-compare-num">${sc.original_score}</div>
+        <div class="score-compare-label">优化前</div>
+      </div>
+      <div class="score-compare-arrow">→</div>
+      <div class="score-compare-item after">
+        <div class="score-compare-num">${sc.estimated_new_score || '?'}</div>
+        <div class="score-compare-label">预估优化后</div>
+      </div>
+      ${sc.why_improved ? `<div class="score-compare-reason">${escapeHtml(sc.why_improved)}</div>` : ""}
+    </div>
+  ` : "";
+
   const optsHtml = (data.optimizations || []).map((opt, i) => `
     <div class="opt-card">
       <div class="opt-header">
         <span class="opt-num">#${i + 1}</span>
         <span class="opt-target">${escapeHtml(opt.target || "")}</span>
       </div>
-      <div class="opt-issue">当前问题：${escapeHtml(opt.issue_summary || "")}</div>
+      <div class="opt-issue">问题：${escapeHtml(opt.issue_summary || "")}</div>
+      ${opt.original_text ? `<div class="opt-original"><strong>优化前：</strong>${escapeHtml(opt.original_text)}</div>` : ""}
       <div class="opt-detail">
         <div class="opt-detail-row"><strong>为什么优化：</strong>${escapeHtml(opt.why_optimize || "")}</div>
         <div class="opt-detail-row"><strong>预期效果：</strong>${escapeHtml(opt.expected_benefit || "")}</div>
       </div>
-      ${opt.optimized_content ? `<div class="opt-content"><strong>优化后文案：</strong><div>${escapeHtml(opt.optimized_content)}</div></div>` : ""}
+      ${opt.optimized_content ? `<div class="opt-content"><strong>优化后：</strong><div>${escapeHtml(opt.optimized_content)}</div></div>` : ""}
     </div>
   `).join("");
 
