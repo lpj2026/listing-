@@ -203,13 +203,13 @@ CRITICAL RULES — VIOLATION WILL CAUSE REJECTION:
 1. Read EVERY issue in the scoring diagnostic carefully. You MUST fix ALL of them.
 2. For each fix, the "optimized_content" field MUST contain the ACTUAL improved text — not a generic suggestion. Show the concrete rewritten copy.
 3. The "optimized_listing" at the end MUST incorporate ALL fixes. It is a complete, ready-to-use listing. Every weakness from the scoring must be addressed in this listing.
-4. Title MUST be 150-200 characters, start with core keyword, include brand context.
-5. Bullet Points MUST be exactly 5, each 80-250 chars, benefit-driven, with category-relevant prefixes.
-6. Description MUST use HTML formatting (<b>, <ul>, <li>).
-7. Search terms MUST NOT repeat words already in title.
+4. Title 150-200 chars STRICT, start with core keyword, include brand.
+5. Bullets exactly 5, each 80-250 chars, prefix format [PREMIUM QUALITY] etc. NO emoji, NO ✅❤✓.
+6. Description HTML format, min 500 chars.
+7. Search terms ≤250 chars STRICT, distinct from title words, include synonyms.
 8. NO prohibited words: "best", "#1", "guaranteed", "risk free", "FDA approved", "miracle", etc.
-9. The optimized listing MUST score higher than the original. If the original scored 40, your optimized version should reach at least 75+.
-10. Think step by step: (a) list all issues found, (b) for each issue, write the fix, (c) verify the fix doesn't create new problems, (d) assemble the complete optimized listing.
+9. Each "optimized_content" MUST be a single plain-text string, NOT an array, NOT JSON.
+10. Optimized listing must score 75+. Think step-by-step: issues → fixes → verify → assemble.
 
 Output ONLY valid JSON, no markdown fences:
 {
@@ -268,7 +268,28 @@ Now generate the complete optimization plan with all fixes applied."""
     result.setdefault("optimized_listing", {})
     result.setdefault("overall_strategy", "")
     result.setdefault("score_comparison", {})
+
+    # Safety: sanitize optimized listing
+    ol = result.get("optimized_listing") or {}
+    if isinstance(ol, dict):
+        # Strip emoji from bullets
+        if isinstance(ol.get("bullets"), list):
+            ol["bullets"] = [_strip_emoji(str(b)) for b in ol["bullets"]]
+        if isinstance(ol.get("title"), str):
+            ol["title"] = _strip_emoji(ol["title"])[:200]
+        if isinstance(ol.get("search_terms"), str):
+            ol["search_terms"] = ol["search_terms"][:250]
+        # Ensure bullets is a list of strings
+        for opt in result.get("optimizations") or []:
+            if isinstance(opt.get("optimized_content"), list):
+                opt["optimized_content"] = "\n".join(str(x) for x in opt["optimized_content"])
+
     return result
+
+
+def _strip_emoji(text: str) -> str:
+    import re as _re
+    return _re.sub(r'[\U0001F300-\U0001F9FF✀-➿☀-⛿︀-️✅❤✓✔✗✘☑]', '', text).strip()
 
 
 def _format_dimensions_for_prompt(dims: dict) -> str:
