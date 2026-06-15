@@ -1198,6 +1198,34 @@ function formToObject() {
   return data;
 }
 
+function collectFormData() {
+  const form = document.querySelector("#productForm");
+  const fd = new FormData(form);
+  const data = {};
+  for (const [key, value] of fd.entries()) {
+    if (key && value && typeof value === "string" && value.trim()) {
+      data[key] = value.trim();
+    }
+  }
+  // Also grab product type, browse node, category path
+  const pt = document.querySelector("#productType")?.value;
+  if (pt) data["product_type"] = pt;
+  const cat = document.querySelector("#categoryPath")?.value;
+  if (cat) data["category_path"] = cat;
+  return data;
+}
+
+function importToListingTools() {
+  const data = collectFormData();
+  if (!data.item_name && !data.product_type) {
+    showToast("请至少填写产品标题或选择产品分类");
+    return;
+  }
+  localStorage.setItem("listing_import_data", JSON.stringify(data));
+  showToast("产品数据已导入，正在跳转到 Listing 分析...");
+  setTimeout(() => { window.location.href = "listing-tools"; }, 600);
+}
+
 function setFieldValue(name, value) {
   const fields = form.querySelectorAll(`[name="${CSS.escape(name)}"]`);
   if (!fields.length) {
@@ -2582,6 +2610,17 @@ function bindActions() {
       event.preventDefault();
       publishPreview().catch((error) => showToast(error.message));
     });
+  });
+
+  // 一键导入到 Listing 工具
+  ["importToListingTop", "importToListingBottom"].forEach((id) => {
+    const btn = document.querySelector(`#${id}`);
+    if (btn) {
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        importToListingTools();
+      });
+    }
   });
 
   document.querySelector("#openCategoryPicker").addEventListener("click", (event) => {

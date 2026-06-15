@@ -1219,6 +1219,13 @@ button:hover {
   white-space: nowrap;
 }
 
+.btn.success {
+  border-color: #13a676;
+  background: #13a676;
+  color: #fff;
+}
+.btn.success:hover { background: #0e8a5e; }
+
 .btn.secondary {
   background: #f7f8fa;
 }

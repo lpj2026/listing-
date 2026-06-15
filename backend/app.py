@@ -27,7 +27,7 @@ from publish_worker import schedule_publish_poll, start_publish_worker
 from schema_service import get_schema, get_variation_themes
 from seller_service import list_stores
 from shipping_service import list_merchant_shipping_groups
-from listing_tools import generate_plans, score_listing as ai_score_listing
+from listing_tools import generate_plans, optimize_listing, score_listing as ai_score_listing
 from sync_worker import check_listing_and_pair, pair_task_now, schedule_listing_sync, start_listing_sync_worker
 from task_store import ACTIVE_TASK_STATUSES, apply_poll_result, create_task, get_task, load_tasks, update_task
 
@@ -531,6 +531,18 @@ class ProductHandler(SimpleHTTPRequestHandler):
             payload = read_body(self)
             try:
                 result = generate_plans(payload)
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+            json_response(self, {"code": 1, "data": result})
+            return
+
+        if parsed.path == "/api/listing/optimize":
+            payload = read_body(self)
+            try:
+                listing_data = payload.get("listing_data") or {}
+                scoring_result = payload.get("scoring_result") or {}
+                result = optimize_listing(listing_data, scoring_result)
             except Exception as exc:
                 json_response(self, {"code": 0, "message": str(exc)}, status=400)
                 return

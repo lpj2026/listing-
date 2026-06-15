@@ -193,3 +193,74 @@ Provide detailed diagnostic in Chinese, following the JSON format exactly."""
                 "score": 0, "max": 25, "positives": [], "issues": []
             }
     return result
+
+
+# ── Combined: Score + Targeted Optimization ─────────────────────────
+
+OPTIMIZE_SYSTEM = """You are an Amazon listing optimization strategist. You receive a product's current listing content AND its scoring diagnostic. Your job is to generate targeted improvement suggestions for each weakness found in the scoring, and also produce 1-2 optimized versions of the listing.
+
+For each major issue identified in the scoring:
+1. Explain WHY this needs to be fixed (Amazon algorithm + buyer psychology)
+2. What BENEFIT the fix brings (search ranking, CTR, conversion rate, etc.)
+3. Provide the optimized version
+
+Output ONLY valid JSON:
+{
+  "optimizations": [
+    {
+      "target": "title / bullets / description / keywords / compliance",
+      "issue_summary": "当前问题简述",
+      "why_optimize": "为什么必须优化（算法+买家心理角度）",
+      "expected_benefit": "优化后的预期效果",
+      "optimized_content": "优化后的文案"
+    }
+  ],
+  "optimized_listing": {
+    "title": "...",
+    "bullets": ["...","...","...","...","..."],
+    "description": "...",
+    "search_terms": "..."
+  },
+  "overall_strategy": "整体优化策略说明"
+}"""
+
+
+def optimize_listing(listing_data: dict[str, Any], scoring_result: dict[str, Any]) -> dict[str, Any]:
+    """Generate targeted optimizations based on scoring weaknesses."""
+    user_prompt = f"""Current Listing:
+Title: {str(listing_data.get('title', ''))}
+Bullets: {chr(10).join(str(b) for b in (listing_data.get('bullets') or []) if b)}
+Description: {str(listing_data.get('description', ''))}
+Search Terms: {str(listing_data.get('search_terms', ''))}
+Category: {str(listing_data.get('category', ''))}
+
+Scoring Results:
+Overall Score: {scoring_result.get('overall_score', 'N/A')}/100
+Grade: {scoring_result.get('overall_grade', 'N/A')}
+
+Dimensions:
+{_format_dimensions_for_prompt(scoring_result.get('dimensions', {}))}
+
+Based on the above scoring, generate targeted optimizations for each weakness. Focus on WHY each fix matters and WHAT benefit it brings."""
+
+    messages = [
+        {"role": "system", "content": OPTIMIZE_SYSTEM},
+        {"role": "user", "content": user_prompt},
+    ]
+    raw = _chat(messages, temperature=0.7, max_tokens=4096)
+    result = extract_json(raw)
+    result.setdefault("optimizations", [])
+    result.setdefault("optimized_listing", {})
+    result.setdefault("overall_strategy", "")
+    return result
+
+
+def _format_dimensions_for_prompt(dims: dict) -> str:
+    lines = []
+    for key, dim in dims.items():
+        score = dim.get("score", 0)
+        max_s = dim.get("max", 25)
+        issues = dim.get("issues", [])
+        issue_texts = [f"  - {i.get('issue', '')}" for i in issues[:3]]
+        lines.append(f"{key}: {score}/{max_s}\n" + "\n".join(issue_texts))
+    return "\n".join(lines)
