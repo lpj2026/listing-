@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import os
+import time
 from typing import Any
 
 from lingxing_client import LingxingClient
 from lingxing_utils import api_error, extract_list, is_ok_code
 from remote_proxy import is_whitelist_error, remote_post
+
+_LISTING_CACHE: dict[str, tuple[float, dict[str, Any] | None]] = {}
+_CACHE_SECONDS = int(os.environ.get("LISTING_CACHE_SECONDS", "300"))
 
 
 def _require_client() -> LingxingClient:
@@ -14,6 +19,10 @@ def _require_client() -> LingxingClient:
     return client
 
 
+def _cache_key(store_id: int, msku: str) -> str:
+    return f"{store_id}:{msku.strip()}"
+
+
 def find_listing_by_msku(
     store_id: int,
     msku: str,
@@ -21,11 +30,17 @@ def find_listing_by_msku(
     page_size: int = 50,
     max_pages: int = 20,
 ) -> dict[str, Any] | None:
+    target = msku.strip()
+    if not store_id or not target:
+        return None
+
+    cache_key = _cache_key(store_id, target)
+    cached = _LISTING_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < _CACHE_SECONDS:
+        return cached[1]
+
     try:
         client = _require_client()
-        target = msku.strip()
-        if not store_id or not target:
-            return None
 
         for page in range(max_pages):
             offset = page * page_size
@@ -46,16 +61,20 @@ def find_listing_by_msku(
             for item in items:
                 seller_sku = str(item.get("seller_sku") or item.get("msku") or "").strip()
                 if seller_sku == target:
+                    _LISTING_CACHE[cache_key] = (time.time(), item)
                     return item
 
             if len(items) < page_size:
                 break
 
+        _LISTING_CACHE[cache_key] = (time.time(), None)
         return None
     except Exception as exc:
         if not is_whitelist_error(exc):
             raise
         proxied = remote_post("/api/proxy/listing/find", {"store_id": store_id, "msku": msku})
         if proxied and proxied.get("code") == 1:
-            return proxied.get("data")
+            item = proxied.get("data")
+            _LISTING_CACHE[cache_key] = (time.time(), item)
+            return item
         raise RuntimeError(f"Listing 查询失败：{exc}") from exc

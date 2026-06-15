@@ -213,12 +213,19 @@ def check_listing_and_pair(task_no: str) -> dict[str, Any]:
     return {"found": True, "task": task, "listing": listing}
 
 
-def pair_task_now(task_no: str) -> dict[str, Any]:
+def pair_task_now(task_no: str, local_sku: str = "") -> dict[str, Any]:
     task = next((item for item in load_tasks() if item.get("task_no") == task_no), None)
     if task is None:
         raise ValueError("任务不存在")
 
     def updater(item: dict[str, Any]) -> None:
+        sku = (local_sku or item.get("local_sku") or "").strip()
+        if sku:
+            item["local_sku"] = sku
+            payload = item.setdefault("payload", {})
+            payload["local_sku"] = sku
+            raw_form = payload.setdefault("raw_form", {})
+            raw_form["local_sku"] = sku
         paired, message = try_pair_task(item)
         if not paired:
             raise ValueError(message)

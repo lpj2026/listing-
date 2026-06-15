@@ -52,7 +52,18 @@
         <div class="panel">
           <div class="panel-head">
             <h2>刊登任务</h2>
-            <button type="button" id="refreshTasks">刷新</button>
+            <div class="panel-tools">
+              <select id="taskStatusFilter">
+                <option value="">全部状态</option>
+                <option value="SUBMITTED">已提交</option>
+                <option value="PROCESSING">处理中</option>
+                <option value="LISTING_SYNCING">等待同步</option>
+                <option value="LISTING_SYNCED">已同步</option>
+                <option value="FAILED">失败</option>
+                <option value="TIMEOUT">超时</option>
+              </select>
+              <button type="button" id="refreshTasks">刷新</button>
+            </div>
           </div>
           <div class="record-list" id="taskList"></div>
         </div>
@@ -154,9 +165,9 @@
                 <input
                   name="local_sku"
                   id="localSkuInput"
-                  placeholder="领星本地 SKU，刊登成功后自动配对（可选）"
+                  placeholder="领星 ERP 本地 SKU（建议刊登前填写）"
                 />
-                <p class="field-hint">填写领星 ERP 中的本地 SKU，Listing 同步后会自动完成 MSKU 配对。</p>
+                <p class="field-hint">与领星库存里的 SKU 一致。刊登前填写可自动配对；漏填可在任务列表点「填写 SKU 并配对」补填。</p>
               </div>
             </div>
             <div class="form-row">
@@ -368,9 +379,8 @@
               <div class="inline-control">
                 <select name="merchant_shipping_group">
                   <option value="">请选择</option>
-                  <option value="template_mock_1">标准配送模板</option>
                 </select>
-                <button type="button">刷新</button>
+                <button type="button" id="shippingTemplateRefresh">刷新</button>
               </div>
             </label>
           </div>
@@ -417,7 +427,7 @@
           <button type="button" class="category-modal-close" id="closeCategoryPicker">×</button>
         </div>
         <div class="category-modal-search">
-          <input type="text" id="categorySearchInput" placeholder="输入分类名称搜索（演示数据支持）" />
+          <input type="text" id="categorySearchInput" placeholder="输入分类名称搜索" />
         </div>
         <div class="category-modal-tip" id="categorySourceTip"></div>
         <div class="category-breadcrumb" id="categoryBreadcrumb">请选择分类</div>
@@ -431,6 +441,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260611-5"></script>
+    <script src="app.js?v=20260611-8"></script>
   </body>
 </html>

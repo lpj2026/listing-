@@ -39,7 +39,9 @@ def pair_msku_to_local_sku(
             "sku": local_sku,
             "is_sync_pic": is_sync_pic,
         }
+        print(f"[pair] Request: seller_id={seller_id}, marketplace_id={marketplace_id}, msku={msku}, sku={local_sku}")
         response = client.request("POST", "/erp/sc/storage/product/link", body)
+        print(f"[pair] Response: code={response.get('code')}, msg={response.get('msg', '')}, data={str(response.get('data', ''))[:200]}")
         if not is_ok_code(response.get("code")):
             raise RuntimeError(api_error(response, "SKU 配对失败"))
         return response

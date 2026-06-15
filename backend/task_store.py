@@ -1,55 +1,106 @@
 from __future__ import annotations
 
 import json
-import threading
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT_DIR / "data"
-TASKS_FILE = DATA_DIR / "tasks.json"
+from record_store import _get_conn, _lock, _row_to_dict, _rows_to_list, next_no, now_text
 
 ACTIVE_POLL_STATUSES = {"SUBMITTED", "PROCESSING"}
 ACTIVE_SYNC_STATUSES = {"LISTING_SYNCING"}
 ACTIVE_TASK_STATUSES = ACTIVE_POLL_STATUSES | ACTIVE_SYNC_STATUSES
-_lock = threading.Lock()
-
-
-def now_text() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def ensure_tasks_file() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    if not TASKS_FILE.exists():
-        TASKS_FILE.write_text("[]", encoding="utf-8")
 
 
 def load_tasks() -> list[dict[str, Any]]:
-    ensure_tasks_file()
-    raw = TASKS_FILE.read_text(encoding="utf-8")
-    return json.loads(raw) if raw.strip() else []
+    conn = _get_conn()
+    rows = conn.execute("SELECT data FROM tasks ORDER BY created_at DESC").fetchall()
+    return _rows_to_list(rows)
 
 
 def save_tasks(tasks: list[dict[str, Any]]) -> None:
-    ensure_tasks_file()
-    TASKS_FILE.write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Bulk replace all tasks. Only used externally if at all; prefer create_task / update_task."""
+    with _lock:
+        conn = _get_conn()
+        conn.execute("DELETE FROM tasks")
+        for item in tasks:
+            task_no = str(item.get("task_no", ""))
+            conn.execute(
+                "INSERT INTO tasks (task_no, status, msku, store_id, record_unique_id, "
+                "data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    task_no,
+                    str(item.get("status", "READY")),
+                    str(item.get("msku", "")),
+                    int(item.get("store_id") or 0),
+                    str(item.get("record_unique_id", "")),
+                    json.dumps(item, ensure_ascii=False),
+                    str(item.get("created_at", "")),
+                    str(item.get("updated_at", "")),
+                ),
+            )
+        conn.commit()
 
 
 def get_task(task_no: str) -> dict[str, Any] | None:
-    with _lock:
-        return next((item for item in load_tasks() if item.get("task_no") == task_no), None)
+    conn = _get_conn()
+    row = conn.execute("SELECT data FROM tasks WHERE task_no = ?", (task_no,)).fetchone()
+    return _row_to_dict(row)
 
 
-def update_task(task_no: str, updater: Callable[[dict[str, Any]], None]) -> dict[str, Any] | None:
+def create_task(task: dict[str, Any]) -> dict[str, Any]:
     with _lock:
-        tasks = load_tasks()
-        task = next((item for item in tasks if item.get("task_no") == task_no), None)
-        if task is None:
+        conn = _get_conn()
+        if not task.get("task_no"):
+            task["task_no"] = next_no("TASK", "tasks", "task_no")
+        task.setdefault("created_at", now_text())
+        task.setdefault("updated_at", "")
+        task.setdefault("status", "READY")
+        task.setdefault("msku", "")
+        task.setdefault("store_id", 0)
+        task.setdefault("record_unique_id", "")
+
+        conn.execute(
+            "INSERT INTO tasks (task_no, status, msku, store_id, record_unique_id, "
+            "data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                task["task_no"],
+                task["status"],
+                task["msku"],
+                int(task.get("store_id") or 0),
+                task["record_unique_id"],
+                json.dumps(task, ensure_ascii=False),
+                task["created_at"],
+                task["updated_at"],
+            ),
+        )
+        conn.commit()
+        return task
+
+
+def update_task(
+    task_no: str, updater: Callable[[dict[str, Any]], None]
+) -> dict[str, Any] | None:
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute("SELECT data FROM tasks WHERE task_no = ?", (task_no,)).fetchone()
+        if row is None:
             return None
+        task = json.loads(row["data"])
         updater(task)
-        save_tasks(tasks)
+        task["updated_at"] = now_text()
+        conn.execute(
+            "UPDATE tasks SET data = ?, status = ?, msku = ?, store_id = ?, "
+            "record_unique_id = ?, updated_at = ? WHERE task_no = ?",
+            (
+                json.dumps(task, ensure_ascii=False),
+                str(task.get("status", "READY")),
+                str(task.get("msku", "")),
+                int(task.get("store_id") or 0),
+                str(task.get("record_unique_id", "")),
+                task["updated_at"],
+                task_no,
+            ),
+        )
+        conn.commit()
         return task
 
 

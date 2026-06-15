@@ -372,7 +372,7 @@ def _unit_count_type_options(prop: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def _field_type(key: str, prop: dict[str, Any]) -> str:
-    if key in {"item_package_dimensions", "item_length_width"}:
+    if key in {"item_package_dimensions", "item_length_width", "item_dimensions"}:
         return "dimensions"
     if key == "unit_count":
         return "unit_count"

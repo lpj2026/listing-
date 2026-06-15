@@ -1,0 +1,16 @@
+[Unit]
+Description=Product Listing System
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/product-listing
+EnvironmentFile=-/opt/product-listing/.env
+ExecStart=/bin/bash /opt/product-listing/scripts/server_start.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/product-listing/logs/app.log
+StandardError=append:/opt/product-listing/logs/app.log
+
+[Install]
+WantedBy=multi-user.target

@@ -15,24 +15,30 @@ except ImportError:
     sys.exit(1)
 
 
+from deploy_config import LISTING_APP_PORT, REMOTE_DIR, REMOTE_HOST
+
 ROOT = Path(__file__).resolve().parent
-REMOTE_HOST = os.environ.get("REMOTE_HOST", "8.137.177.25")
 REMOTE_USER = os.environ.get("REMOTE_USER", "root")
 REMOTE_PASSWORD = os.environ.get("REMOTE_SSH_PASSWORD", "")
-REMOTE_DIR = os.environ.get("REMOTE_DIR", "/opt/product-listing")
-APP_PORT = os.environ.get("APP_PORT", "8001")
+APP_PORT = LISTING_APP_PORT
 
 UPLOAD_ITEMS = [
     "backend",
     "frontend",
     "data",
     "scripts",
+    "run_on_aliyun.sh",
     "requirements.txt",
     ".env.example",
 ]
 
-SKIP_DIR_NAMES = {"__pycache__", ".git", ".venv", "venv", "logs"}
+SKIP_DIR_NAMES = {"__pycache__", ".git", ".venv", "venv", "logs", "category_cache", "schema_cache"}
 SKIP_FILE_NAMES = {".gitignore", "deploy_to_aliyun.py", "deploy.bat"}
+SKIP_REMOTE_REL_PATHS = {
+    "data/drafts.json",
+    "data/tasks.json",
+}
+SKIP_REMOTE_PREFIXES = ("data/uploads/",)
 
 
 def log(msg: str) -> None:
@@ -69,6 +75,10 @@ def collect_files() -> list[tuple[Path, str]]:
                 continue
             if file_path.name in SKIP_FILE_NAMES:
                 continue
+            if rel.replace("\\", "/") in SKIP_REMOTE_REL_PATHS:
+                continue
+            if any(rel.replace("\\", "/").startswith(prefix) for prefix in SKIP_REMOTE_PREFIXES):
+                continue
             files.append((file_path, rel))
     return files
 
@@ -102,6 +112,7 @@ def build_remote_env() -> str:
         f"PUBLIC_HOST={REMOTE_HOST}",
         f"IMAGE_PUBLIC_BASE_URL=http://{REMOTE_HOST}/listing",
         "IMAGE_MAX_BYTES=10485760",
+        "ALLOW_HTTP_IMAGES=1",
     ]
     present = {line.split("=", 1)[0] for line in lines if "=" in line}
     if local_env.exists():
@@ -177,16 +188,17 @@ def main() -> int:
         ssh_exec(client, stop_cmd)
 
         start_cmd = (
-            f"cd {REMOTE_DIR} && nohup bash scripts/server_start.sh > logs/app.log 2>&1 & "
-            f"echo $! > app.pid && sleep 2 && cat app.pid"
+            f"cd {REMOTE_DIR} && "
+            f"setsid bash scripts/server_start.sh >> logs/app.log 2>&1 < /dev/null & "
+            f"sleep 3 && "
+            f"curl -s -o /dev/null -w 'http:%{{http_code}}' http://127.0.0.1:{APP_PORT}/create-product"
         )
-        code, out, _ = ssh_exec(client, start_cmd)
-        if code != 0:
+        code, out, _ = ssh_exec(client, start_cmd, timeout=30)
+        if code != 0 or "http:200" not in out:
             log("启动失败，查看 logs/app.log")
             ssh_exec(client, f"tail -n 40 {REMOTE_DIR}/logs/app.log")
             return 1
 
-        time.sleep(2)
         verify_remote(client)
 
         log("\n=== Verify image upload API ===")

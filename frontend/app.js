@@ -220,7 +220,10 @@ async function searchCategories(keyword) {
     return;
   }
 
-  const result = await apiGet(`/api/categories/search?q=${encodeURIComponent(keyword.trim())}`);
+  const storeId = getSelectedStore()?.id || "";
+  const result = await apiGet(
+    `/api/categories/search?q=${encodeURIComponent(keyword.trim())}&store_id=${encodeURIComponent(storeId)}`,
+  );
   const items = result.data || [];
   categoryColumns.classList.add("hidden");
   categorySearchResults.classList.remove("hidden");
@@ -1608,6 +1611,27 @@ function buildAttributes(data) {
     ];
   }
 
+  // Handle item_dimensions (virtual dimension field for item_length/width/height)
+  const itemLength = data.attr_item_dimensions_length || data.attr_item_length;
+  const itemWidth = data.attr_item_dimensions_width || data.attr_item_width;
+  const itemHeight = data.attr_item_dimensions_height || data.attr_item_height;
+  const itemDimUnit =
+    data.attr_item_dimensions_unit ||
+    data.attr_item_length_unit ||
+    data.attr_item_width_unit ||
+    data.attr_item_height_unit ||
+    "inches";
+  if (itemLength || itemWidth || itemHeight) {
+    attributes.item_dimensions = [
+      {
+        length: itemLength ? { value: Number(itemLength), unit: itemDimUnit } : undefined,
+        width: itemWidth ? { value: Number(itemWidth), unit: itemDimUnit } : undefined,
+        height: itemHeight ? { value: Number(itemHeight), unit: itemDimUnit } : undefined,
+        marketplace_id: marketplaceId,
+      },
+    ];
+  }
+
   const packageWeight = data.attr_item_package_weight;
   const packageWeightUnit = data.attr_item_package_weight_unit || "pounds";
   if (!attributes.item_package_weight && packageWeight) {
@@ -1722,6 +1746,7 @@ function onAccountChange() {
     }
   }
   syncStoreFields();
+  loadShippingTemplates().catch(() => {});
 }
 
 function onSiteChange() {
@@ -1736,6 +1761,7 @@ function onSiteChange() {
     }
   }
   syncStoreFields();
+  loadShippingTemplates().catch(() => {});
 }
 
 function buildPayload(status) {
@@ -2090,6 +2116,16 @@ async function publishPreview() {
   const payload = buildPayload("ready");
   if (!validateVariationInfo()) return;
   if (!validateSchemaRequiredAttributes(payload.raw_form || {})) return;
+  const localSku = document.querySelector("#localSkuInput")?.value.trim();
+  if (!localSku) {
+    const go = window.confirm(
+      "未填写「本地 SKU」，刊登成功后无法自动配对。\n\n可在任务列表点「配对」补填，或现在返回填写。\n\n是否仍继续提交？"
+    );
+    if (!go) {
+      document.querySelector("#localSkuInput")?.focus();
+      return;
+    }
+  }
   const result = await apiPost("/api/publish", payload);
   console.log("publish", result.data);
   await loadTasks();
@@ -2102,8 +2138,40 @@ async function loadStores() {
   renderAccountOptions();
   renderSiteOptions();
   syncStoreFields();
+  await loadShippingTemplates();
   if (result.message) {
     console.info("[stores]", result.source || "unknown", result.message);
+  }
+}
+
+async function loadShippingTemplates() {
+  const store = getSelectedStore();
+  const productType = productTypeInput?.value || "AUTO_PART";
+  const select = document.querySelector('select[name="merchant_shipping_group"]');
+  if (!select || !store?.seller_id) return;
+
+  try {
+    const result = await apiGet(
+      `/api/shipping-templates?seller_id=${encodeURIComponent(store.seller_id)}&marketplace_id=${encodeURIComponent(store.marketplace_id || "ATVPDKIKX0DER")}&product_type=${encodeURIComponent(productType)}`,
+    );
+    const items = result.data || [];
+    const current = select.value;
+    select.innerHTML =
+      '<option value="">请选择</option>' +
+      items
+        .map(
+          (item) =>
+            `<option value="${escapeHtml(item.value)}">${escapeHtml(item.name || item.value)}</option>`,
+        )
+        .join("");
+    if (current && [...select.options].some((opt) => opt.value === current)) {
+      select.value = current;
+    }
+    if (result.message) {
+      console.info("[shipping]", result.source || "unknown", result.message);
+    }
+  } catch (error) {
+    console.warn("[shipping]", error.message);
   }
 }
 
@@ -2213,6 +2281,7 @@ async function loadSchema() {
   if (isVariationSaleType()) {
     await loadVariationThemes({ themes: currentVariationThemes });
   }
+  await loadShippingTemplates();
   showToast(
     result.message ||
       `已加载 ${result.product_type || productType} 属性模板，共 ${currentRequiredSummary.required_count || getPresetRequiredFields().length} 个亚马逊必填项`,
@@ -2290,7 +2359,10 @@ function renderDrafts(drafts) {
         <div class="record-meta-row">SKU：${draft.msku || "-"}</div>
         <div class="record-meta-row">更新时间：${draft.updated_at || "-"}</div>
       </div>
-      <button type="button" data-draft-no="${draft.draft_no}">恢复</button>
+      <div class="record-actions">
+        <button type="button" class="btn ghost" data-draft-no="${draft.draft_no}">恢复</button>
+        <button type="button" class="btn ghost danger" data-draft-delete="${draft.draft_no}">删除</button>
+      </div>
     `;
     draftList.appendChild(item);
   });
@@ -2326,6 +2398,11 @@ function renderTasks(tasks) {
         ${pollHint ? `<div class="record-meta-row">${pollHint}</div>` : ""}
         ${task.asin ? `<div class="record-meta-row">ASIN：${task.asin}</div>` : ""}
         ${task.local_sku ? `<div class="record-meta-row">本地 SKU：${task.local_sku}</div>` : ""}
+        ${
+          task.status === "LISTING_SYNCED" && !task.sku_paired && !task.local_sku
+            ? '<div class="record-meta-row record-warn">未填本地 SKU，请点击下方「填写 SKU 并配对」</div>'
+            : ""
+        }
         ${batchInfo ? `<div class="record-meta-row">${batchInfo}</div>` : ""}
       </div>
       ${
@@ -2336,7 +2413,12 @@ function renderTasks(tasks) {
       <div class="record-actions">
         ${task.record_unique_id && ["SUBMITTED", "PROCESSING", "TIMEOUT"].includes(task.status) ? '<button type="button" class="btn ghost poll-task">查刊登</button>' : ""}
         ${["LISTING_SYNCING", "SYNC_TIMEOUT", "LISTING_SYNCED"].includes(task.status) ? '<button type="button" class="btn ghost sync-task">查Listing</button>' : ""}
-        ${task.status === "LISTING_SYNCED" ? '<button type="button" class="btn ghost pair-task">配对</button>' : ""}
+        ${
+          task.status === "LISTING_SYNCED"
+            ? `<button type="button" class="btn ghost pair-task">${task.local_sku ? "配对" : "填写 SKU 并配对"}</button>`
+            : ""
+        }
+        ${["FAILED", "TIMEOUT"].includes(task.status) ? '<button type="button" class="btn ghost retry-task">重新提交</button>' : ""}
       </div>
     `;
     item.querySelector(".poll-task")?.addEventListener("click", () => {
@@ -2346,7 +2428,10 @@ function renderTasks(tasks) {
       syncListingNow(task.task_no).catch((error) => showToast(error.message));
     });
     item.querySelector(".pair-task")?.addEventListener("click", () => {
-      pairSkuNow(task.task_no).catch((error) => showToast(error.message));
+      pairSkuNow(task).catch((error) => showToast(error.message));
+    });
+    item.querySelector(".retry-task")?.addEventListener("click", () => {
+      retryTask(task.task_no).catch((error) => showToast(error.message));
     });
     taskList.appendChild(item);
   });
@@ -2369,14 +2454,42 @@ async function syncListingNow(taskNo) {
   showToast(result.message || "已查询 Listing");
 }
 
-async function pairSkuNow(taskNo) {
-  const result = await apiPost(`/api/tasks/${encodeURIComponent(taskNo)}/pair`, {});
+async function pairSkuNow(task) {
+  const taskNo = task.task_no;
+  let localSku = (task.local_sku || "").trim();
+  if (!localSku) {
+    const input = window.prompt("请输入领星 ERP 本地 SKU（与库存系统一致的编码）：");
+    if (!input?.trim()) {
+      showToast("已取消配对");
+      return;
+    }
+    localSku = input.trim();
+  }
+  const result = await apiPost(`/api/tasks/${encodeURIComponent(taskNo)}/pair`, {
+    local_sku: localSku,
+  });
   await loadTasks();
   showToast(result.message || "SKU 配对成功");
 }
 
+async function deleteDraft(draftNo) {
+  if (!window.confirm("确定删除这条草稿吗？")) return;
+  const result = await apiPost("/api/drafts/delete", { draft_no: draftNo });
+  await loadDrafts();
+  showToast(result.message || "草稿已删除");
+}
+
+async function retryTask(taskNo) {
+  if (!window.confirm("将使用任务保存的资料重新提交刊登，是否继续？")) return;
+  const result = await apiPost(`/api/tasks/${encodeURIComponent(taskNo)}/retry`, {});
+  await loadTasks();
+  showToast(result.message || "已重新提交");
+}
+
 async function loadTasks() {
-  const result = await apiGet("/api/tasks");
+  const status = document.querySelector("#taskStatusFilter")?.value || "";
+  const url = status ? `/api/tasks?status=${encodeURIComponent(status)}` : "/api/tasks";
+  const result = await apiGet(url);
   const tasks = result.data || [];
   renderTasks(tasks);
   syncTaskPolling(tasks);
@@ -2438,6 +2551,17 @@ async function restoreDraft(draftNumber) {
       rawForm.attr_item_package_height_unit ||
       "inches";
   }
+  // Convert legacy item_length/width/height to item_dimensions format
+  if (!rawForm.attr_item_dimensions_length && rawForm.attr_item_length) {
+    rawForm.attr_item_dimensions_length = rawForm.attr_item_length;
+    rawForm.attr_item_dimensions_width = rawForm.attr_item_width;
+    rawForm.attr_item_dimensions_height = rawForm.attr_item_height;
+    rawForm.attr_item_dimensions_unit =
+      rawForm.attr_item_length_unit ||
+      rawForm.attr_item_width_unit ||
+      rawForm.attr_item_height_unit ||
+      "inches";
+  }
   Object.entries(rawForm)
     .filter(([name]) => name.startsWith("attr_"))
     .forEach(([name, value]) => setFieldValue(name, value));
@@ -2490,8 +2614,19 @@ function bindActions() {
   document.querySelector("#refreshTasks").addEventListener("click", () => {
     loadTasks().catch((error) => showToast(error.message));
   });
+  document.querySelector("#taskStatusFilter")?.addEventListener("change", () => {
+    loadTasks().catch((error) => showToast(error.message));
+  });
+  document.querySelector("#shippingTemplateRefresh")?.addEventListener("click", () => {
+    loadShippingTemplates().catch((error) => showToast(error.message));
+  });
 
   draftList.addEventListener("click", (event) => {
+    const deleteBtn = event.target.closest("[data-draft-delete]");
+    if (deleteBtn) {
+      deleteDraft(deleteBtn.dataset.draftDelete).catch((error) => showToast(error.message));
+      return;
+    }
     const button = event.target.closest("[data-draft-no]");
     if (!button) return;
     restoreDraft(button.dataset.draftNo).catch((error) => showToast(error.message));

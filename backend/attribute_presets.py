@@ -205,6 +205,73 @@ BABY_REQUIRED_KEYS = [
     "supplier_declared_dg_hz_regulation",
 ]
 
+PLUMBING_FIXTURE_VISIBLE_KEYS = [
+    "model_number",
+    "model_name",
+    "number_of_items",
+    "color",
+    "material",
+    "item_dimensions",
+    "list_price_currency",
+    "list_price",
+    "item_package_length",
+    "item_package_width",
+    "item_package_height",
+    "item_package_weight",
+    "country_of_origin",
+    "supplier_declared_dg_hz_regulation",
+]
+
+PLUMBING_FIXTURE_REQUIRED_KEYS = [
+    "model_number",
+    "model_name",
+    "number_of_items",
+    "color",
+    "material",
+    "item_dimensions",
+    "list_price_currency",
+    "list_price",
+    "item_package_length",
+    "item_package_width",
+    "item_package_height",
+    "item_package_weight",
+    "country_of_origin",
+    "supplier_declared_dg_hz_regulation",
+]
+
+PLUMBING_FIXTURE_SECTIONS: list[dict[str, Any]] = [
+    {
+        "keys": [
+            "model_number",
+            "model_name",
+            "number_of_items",
+            "color",
+            "material",
+        ],
+    },
+    {"title": "Item Dimensions(商品尺寸)", "panel": True, "keys": [
+        "item_dimensions",
+    ]},
+    {"title": "List Price(不含税价目表)", "keys": ["list_price_currency", "list_price"]},
+    {
+        "title": "Item Package Dimensions(包装尺寸)",
+        "panel": True,
+        "keys": [
+            "item_package_length",
+            "item_package_width",
+            "item_package_height",
+        ],
+    },
+    {"title": "Package Weight(包裹重量)", "panel": True, "keys": ["item_package_weight"]},
+    {
+        "keys": [
+            "country_of_origin",
+            "supplier_declared_dg_hz_regulation",
+        ],
+    },
+]
+
+
 HARDWARE_TUBING_VISIBLE_KEYS = [
     "model_number",
     "model_name",
@@ -309,6 +376,41 @@ LIST_PRICE_CURRENCY_OPTIONS = [
 
 
 FIELD_UI_OVERRIDES: dict[str, dict[str, Any]] = {
+    "item_dimensions": {
+        "type": "dimensions",
+        "label_en": "Item Dimensions",
+        "label_zh": "商品尺寸",
+        "dimension_parts": ["length", "width", "height"],
+        "unit_options": [
+            {"value": "inches", "label": "Inches(英寸)"},
+            {"value": "centimeters", "label": "Centimeters(厘米)"},
+        ],
+        "unit_default": "inches",
+        "unit_key": "item_dimensions_unit",
+    },
+    "material": {
+        "type": "select",
+        "searchable": True,
+        "options": [
+            {"value": "ABS", "label": "ABS(丙烯腈丁二烯苯乙烯)"},
+            {"value": "Brass", "label": "Brass(黄铜)"},
+            {"value": "Stainless Steel", "label": "Stainless Steel(不锈钢)"},
+            {"value": "Chrome", "label": "Chrome(镀铬)"},
+            {"value": "Plastic", "label": "Plastic(塑料)"},
+            {"value": "PVC", "label": "PVC(聚氯乙烯)"},
+            {"value": "CPVC", "label": "CPVC(氯化聚氯乙烯)"},
+            {"value": "Copper", "label": "Copper(铜)"},
+            {"value": "Bronze", "label": "Bronze(青铜)"},
+            {"value": "Zinc Alloy", "label": "Zinc Alloy(锌合金)"},
+            {"value": "Aluminum", "label": "Aluminum(铝)"},
+            {"value": "Cast Iron", "label": "Cast Iron(铸铁)"},
+            {"value": "Galvanized Steel", "label": "Galvanized Steel(镀锌钢)"},
+            {"value": "Rubber", "label": "Rubber(橡胶)"},
+            {"value": "Silicone", "label": "Silicone(硅胶)"},
+            {"value": "Ceramic", "label": "Ceramic(陶瓷)"},
+            {"value": "Nickel", "label": "Nickel(镍)"},
+        ],
+    },
     "exterior_finish": {
         "type": "select",
         "searchable": True,
@@ -373,6 +475,7 @@ PACKAGE_DIMENSION_PARTS = [
 
 DIMENSION_PARENT_PARTS = {
     "item_package_dimensions": ["item_package_length", "item_package_width", "item_package_height"],
+    "item_dimensions": ["item_length", "item_width", "item_height"],
 }
 
 
@@ -414,6 +517,13 @@ def resolve_preset(product_type: str) -> dict[str, Any]:
             "visible_keys": HARDWARE_TUBING_VISIBLE_KEYS,
             "required_keys": HARDWARE_TUBING_REQUIRED_KEYS,
             "sections": HARDWARE_TUBING_SECTIONS,
+        }
+    if product_type == "PLUMBING_FIXTURE":
+        return {
+            "product_type": product_type,
+            "visible_keys": PLUMBING_FIXTURE_VISIBLE_KEYS,
+            "required_keys": PLUMBING_FIXTURE_REQUIRED_KEYS,
+            "sections": PLUMBING_FIXTURE_SECTIONS,
         }
     return {
         "product_type": product_type,
@@ -556,6 +666,40 @@ def apply_product_type_layout(
         field["conditional"] = bool(field.get("conditional_required")) and not is_baseline
         field["hidden"] = False
         field_map[key] = field
+
+    # Inject virtual dimension fields (e.g., item_dimensions -> item_length + item_width + item_height)
+    for parent_key, part_keys in DIMENSION_PARENT_PARTS.items():
+        if parent_key not in visible_keys:
+            continue
+        if parent_key in field_map:
+            continue
+        # Check if all part keys exist in field_map
+        part_fields = [field_map.get(pk) for pk in part_keys]
+        if not all(part_fields):
+            continue
+        # Create virtual dimension field from the first part
+        base_field = deepcopy(part_fields[0])
+        base_field["key"] = parent_key
+        base_field["type"] = "dimensions"
+        base_field["label_en"] = parent_key.replace("_", " ").title()
+        base_field["label_zh"] = "商品尺寸" if parent_key == "item_dimensions" else base_field.get("label_en")
+        base_field["dimension_parts"] = [pk.replace(f"{parent_key}_", "") for pk in part_keys] if parent_key != "item_dimensions" else ["length", "width", "height"]
+        base_field["unit_options"] = [
+            {"value": "inches", "label": "Inches(英寸)"},
+            {"value": "centimeters", "label": "Centimeters(厘米)"},
+        ]
+        base_field["unit_default"] = "inches"
+        base_field["unit_key"] = f"{parent_key}_unit"
+        base_field["required"] = any(f.get("required") for f in part_fields)
+        base_field["required_static"] = any(f.get("required_static") for f in part_fields)
+        base_field["schema_required"] = any(f.get("schema_required") for f in part_fields)
+        base_field["advanced"] = False
+        base_field["preset_visible"] = True
+        field_map[parent_key] = base_field
+        # Hide original part fields
+        for pk in part_keys:
+            if pk in field_map:
+                field_map[pk]["hidden"] = True
 
     ordered: list[dict[str, Any]] = []
     used: set[str] = set()

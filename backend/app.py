@@ -16,23 +16,24 @@ load_env()
 
 from remote_proxy import remote_base
 
-from category_service import list_categories, search_mock_categories
+from category_service import list_categories, search_categories
+from draft_store import delete_draft, get_draft, list_drafts, save_draft
 from image_service import resolve_upload_file, upload_image
 from listing_service import find_listing_by_msku
 from pair_service import pair_msku_to_local_sku
 from publish_service import query_publish_result, submit_publish
+from publish_validator import validate_publish_payload
 from publish_worker import schedule_publish_poll, start_publish_worker
 from schema_service import get_schema, get_variation_themes
 from seller_service import list_stores
+from shipping_service import list_merchant_shipping_groups
 from sync_worker import check_listing_and_pair, pair_task_now, schedule_listing_sync, start_listing_sync_worker
-from task_store import ACTIVE_TASK_STATUSES, apply_poll_result, load_tasks, save_tasks, update_task
+from task_store import ACTIVE_TASK_STATUSES, apply_poll_result, create_task, get_task, load_tasks, update_task
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 DATA_DIR = ROOT_DIR / "data"
-DRAFTS_FILE = DATA_DIR / "drafts.json"
-TASKS_FILE = DATA_DIR / "tasks.json"
 
 
 def now_text() -> str:
@@ -42,26 +43,20 @@ def now_text() -> str:
 def ensure_data_files() -> None:
     DATA_DIR.mkdir(exist_ok=True)
     (DATA_DIR / "uploads").mkdir(exist_ok=True)
-    for file_path in [DRAFTS_FILE, TASKS_FILE]:
-        if not file_path.exists():
-            file_path.write_text("[]", encoding="utf-8")
 
 
-def load_records(file_path: Path) -> list[dict[str, Any]]:
-    ensure_data_files()
-    raw = file_path.read_text(encoding="utf-8")
-    return json.loads(raw) if raw.strip() else []
+def is_local_request(handler: SimpleHTTPRequestHandler) -> bool:
+    addr = handler.client_address[0]
+    if addr in {"127.0.0.1", "::1"}:
+        return True
+    forwarded = (handler.headers.get("X-Real-IP") or handler.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return forwarded in {"127.0.0.1", "::1"}
 
 
-def save_records(file_path: Path, records: list[dict[str, Any]]) -> None:
-    ensure_data_files()
-    file_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def next_no(prefix: str, records: list[dict[str, Any]], key: str) -> str:
-    today = datetime.now().strftime("%Y%m%d")
-    count = sum(1 for record in records if str(record.get(key, "")).startswith(f"{prefix}-{today}"))
-    return f"{prefix}-{today}-{count + 1:04d}"
+def proxy_allowed(handler: SimpleHTTPRequestHandler) -> bool:
+    if os.environ.get("DISABLE_REMOTE_PROXY", "").strip() == "1":
+        return is_local_request(handler)
+    return True
 
 
 def json_response(handler: SimpleHTTPRequestHandler, payload: Any, status: int = 200) -> None:
@@ -155,7 +150,23 @@ class ProductHandler(SimpleHTTPRequestHandler):
         if path == "/api/categories/search":
             query = parse_qs(parsed.query)
             keyword = query.get("q", [""])[0]
-            json_response(self, {"data": search_mock_categories(keyword)})
+            store_id = int(query.get("store_id", ["0"])[0] or 0) or None
+            json_response(self, search_categories(store_id, keyword))
+            return
+
+        if path == "/api/shipping-templates":
+            query = parse_qs(parsed.query)
+            try:
+                result = list_merchant_shipping_groups(
+                    seller_id=query.get("seller_id", [""])[0],
+                    marketplace_id=query.get("marketplace_id", ["ATVPDKIKX0DER"])[0],
+                    product_type=query.get("product_type", ["AUTO_PART"])[0],
+                    flag=int(query.get("flag", ["0"])[0] or 0),
+                )
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+            json_response(self, result)
             return
 
         if path == "/api/schema":
@@ -173,13 +184,12 @@ class ProductHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/drafts":
-            drafts = sorted(load_records(DRAFTS_FILE), key=lambda item: item.get("updated_at", ""), reverse=True)
-            json_response(self, {"data": drafts})
+            json_response(self, {"data": list_drafts()})
             return
 
         if path.startswith("/api/drafts/"):
             draft_no = path.rsplit("/", 1)[-1]
-            draft = next((item for item in load_records(DRAFTS_FILE) if item.get("draft_no") == draft_no), None)
+            draft = get_draft(draft_no)
             if draft is None:
                 json_response(self, {"code": 0, "message": "草稿不存在"}, status=404)
                 return
@@ -236,18 +246,12 @@ class ProductHandler(SimpleHTTPRequestHandler):
             json_response(self, {"code": 1, "message": message, "data": result})
             return
 
-        if path.startswith("/api/tasks/") and path.endswith("/pair"):
-            task_no = path.rsplit("/", 2)[-2]
-            try:
-                result = pair_task_now(task_no)
-            except Exception as exc:
-                json_response(self, {"code": 0, "message": str(exc)}, status=400)
-                return
-            json_response(self, {"code": 1, "message": "SKU 配对成功", "data": result})
-            return
-
         if path == "/api/tasks":
+            query = parse_qs(parsed.query)
+            status_filter = query.get("status", [""])[0].strip()
             tasks = sorted(load_tasks(), key=lambda item: item.get("created_at", ""), reverse=True)
+            if status_filter:
+                tasks = [item for item in tasks if item.get("status") == status_filter]
             json_response(
                 self,
                 {
@@ -296,8 +300,9 @@ class ProductHandler(SimpleHTTPRequestHandler):
 
         if path.startswith("/api/tasks/") and path.endswith("/pair"):
             task_no = path.rsplit("/", 2)[-2]
+            body = read_body(self)
             try:
-                result = pair_task_now(task_no)
+                result = pair_task_now(task_no, str(body.get("local_sku") or ""))
             except Exception as exc:
                 json_response(self, {"code": 0, "message": str(exc)}, status=400)
                 return
@@ -324,24 +329,7 @@ class ProductHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/drafts":
             payload = read_body(self)
-            drafts = load_records(DRAFTS_FILE)
-            draft_no = payload.get("draft_no")
-            existing = next((item for item in drafts if item.get("draft_no") == draft_no), None)
-
-            if existing:
-                existing.update(payload)
-                existing["updated_at"] = now_text()
-                saved = existing
-            else:
-                saved = {
-                    **payload,
-                    "draft_no": next_no("DRAFT", drafts, "draft_no"),
-                    "created_at": now_text(),
-                    "updated_at": now_text(),
-                }
-                drafts.append(saved)
-
-            save_records(DRAFTS_FILE, drafts)
+            saved = save_draft(payload)
             json_response(
                 self,
                 {
@@ -351,6 +339,23 @@ class ProductHandler(SimpleHTTPRequestHandler):
                 },
             )
             return
+
+        if parsed.path == "/api/drafts/delete":
+            payload = read_body(self)
+            draft_no = str(payload.get("draft_no") or "").strip()
+            if not draft_no:
+                json_response(self, {"code": 0, "message": "缺少 draft_no"}, status=400)
+                return
+            if not delete_draft(draft_no):
+                json_response(self, {"code": 0, "message": "草稿不存在"}, status=404)
+                return
+            json_response(self, {"code": 1, "message": "草稿已删除"})
+            return
+
+        if parsed.path.startswith("/api/proxy/"):
+            if not proxy_allowed(self):
+                json_response(self, {"code": 0, "message": "代理接口仅允许本机访问"}, status=403)
+                return
 
         if parsed.path == "/api/proxy/publish":
             payload = read_body(self)
@@ -409,25 +414,28 @@ class ProductHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/publish/preview":
             payload = read_body(self)
-            tasks = load_records(TASKS_FILE)
-            task = {
-                "task_no": next_no("TASK", tasks, "task_no"),
-                "draft_no": payload.get("draft_no") or "",
-                "store_id": payload.get("store_id"),
-                "store_name": payload.get("store_name"),
-                "marketplace_id": payload.get("marketplace_id"),
-                "msku": payload.get("msku") or payload.get("raw_form", {}).get("seller_sku", ""),
-                "product_type": payload.get("product_type"),
-                "status": "READY",
-                "status_text": "待提交领星",
-                "failure_reason": "",
-                "record_unique_id": "",
-                "poll_attempt": 0,
-                "created_at": now_text(),
-                "payload": payload,
-            }
-            tasks.append(task)
-            save_records(TASKS_FILE, tasks)
+            try:
+                validate_publish_payload(payload)
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+            task = create_task(
+                {
+                    "draft_no": payload.get("draft_no") or "",
+                    "store_id": payload.get("store_id"),
+                    "store_name": payload.get("store_name"),
+                    "marketplace_id": payload.get("marketplace_id"),
+                    "msku": payload.get("msku") or payload.get("raw_form", {}).get("seller_sku", ""),
+                    "product_type": payload.get("product_type"),
+                    "status": "READY",
+                    "status_text": "待提交领星",
+                    "failure_reason": "",
+                    "record_unique_id": "",
+                    "poll_attempt": 0,
+                    "created_at": now_text(),
+                    "payload": payload,
+                }
+            )
             json_response(
                 self,
                 {
@@ -438,39 +446,69 @@ class ProductHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        if parsed.path == "/api/publish":
-            payload = read_body(self)
-            tasks = load_records(TASKS_FILE)
+        if path.startswith("/api/tasks/") and path.endswith("/retry"):
+            task_no = path.rsplit("/", 2)[-2]
+            task = get_task(task_no)
+            if task is None:
+                json_response(self, {"code": 0, "message": "任务不存在"}, status=404)
+                return
+            payload = task.get("payload") or {}
             try:
+                validate_publish_payload(payload)
                 publish_result = submit_publish(payload)
             except Exception as exc:
                 json_response(self, {"code": 0, "message": str(exc)}, status=400)
                 return
 
-            task = {
-                "task_no": next_no("TASK", tasks, "task_no"),
-                "draft_no": payload.get("draft_no") or "",
-                "store_id": payload.get("store_id"),
-                "store_name": payload.get("store_name"),
-                "seller_id": payload.get("seller_id") or "",
-                "marketplace_id": payload.get("marketplace_id"),
-                "msku": payload.get("msku") or payload.get("raw_form", {}).get("seller_sku", ""),
-                "local_sku": payload.get("local_sku") or payload.get("raw_form", {}).get("local_sku", ""),
-                "product_type": payload.get("product_type"),
-                "status": "SUBMITTED",
-                "status_text": "已提交领星，自动轮询中",
-                "failure_reason": "",
-                "record_unique_id": publish_result["record_unique_id"],
-                "poll_attempt": 0,
-                "sync_attempt": 0,
-                "sku_paired": False,
-                "created_at": now_text(),
-                "payload": payload,
-                "publish_request": publish_result["request"],
-                "publish_response": publish_result["response"],
-            }
-            tasks.append(task)
-            save_records(TASKS_FILE, tasks)
+            def updater(item: dict[str, Any]) -> None:
+                item["status"] = "SUBMITTED"
+                item["status_text"] = "已重新提交领星，自动轮询中"
+                item["failure_reason"] = ""
+                item["record_unique_id"] = publish_result["record_unique_id"]
+                item["poll_attempt"] = 0
+                item["sync_attempt"] = 0
+                item["completed_at"] = ""
+                item["publish_request"] = publish_result["request"]
+                item["publish_response"] = publish_result["response"]
+                item["updated_at"] = now_text()
+
+            updated = update_task(task_no, updater)
+            schedule_publish_poll(task_no)
+            json_response(self, {"code": 1, "message": "已重新提交刊登", "data": updated})
+            return
+
+        if parsed.path == "/api/publish":
+            payload = read_body(self)
+            try:
+                validate_publish_payload(payload)
+                publish_result = submit_publish(payload)
+            except Exception as exc:
+                json_response(self, {"code": 0, "message": str(exc)}, status=400)
+                return
+
+            task = create_task(
+                {
+                    "draft_no": payload.get("draft_no") or "",
+                    "store_id": payload.get("store_id"),
+                    "store_name": payload.get("store_name"),
+                    "seller_id": payload.get("seller_id") or "",
+                    "marketplace_id": payload.get("marketplace_id"),
+                    "msku": payload.get("msku") or payload.get("raw_form", {}).get("seller_sku", ""),
+                    "local_sku": payload.get("local_sku") or payload.get("raw_form", {}).get("local_sku", ""),
+                    "product_type": payload.get("product_type"),
+                    "status": "SUBMITTED",
+                    "status_text": "已提交领星，自动轮询中",
+                    "failure_reason": "",
+                    "record_unique_id": publish_result["record_unique_id"],
+                    "poll_attempt": 0,
+                    "sync_attempt": 0,
+                    "sku_paired": False,
+                    "created_at": now_text(),
+                    "payload": payload,
+                    "publish_request": publish_result["request"],
+                    "publish_response": publish_result["response"],
+                }
+            )
             schedule_publish_poll(task["task_no"])
             json_response(
                 self,

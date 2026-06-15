@@ -4,6 +4,8 @@ import ast
 import json
 import os
 import re
+import time
+from pathlib import Path
 from typing import Any
 
 from lingxing_client import LingxingClient
@@ -11,6 +13,10 @@ from remote_proxy import is_whitelist_error, remote_get
 
 
 DEFAULT_STORE_ID = int(os.environ.get("LINGXING_DEFAULT_STORE_ID", "12518"))
+ROOT_DIR = Path(__file__).resolve().parents[1]
+CATEGORY_CACHE_DIR = ROOT_DIR / "data" / "category_cache"
+CATEGORY_LIST_CACHE_SECONDS = int(os.environ.get("CATEGORY_LIST_CACHE_SECONDS", str(6 * 60 * 60)))
+CATEGORY_INDEX_CACHE_SECONDS = int(os.environ.get("CATEGORY_INDEX_CACHE_SECONDS", str(24 * 60 * 60)))
 
 CATEGORY_ZH_LABELS = {
     "Amazon Explore": "亚马逊探索",
@@ -399,6 +405,34 @@ def _mock_list(parent_id: str | None) -> list[dict[str, Any]]:
     return items
 
 
+def _category_list_cache_path(store_id: int, parent_id: str | None) -> Path:
+    key = parent_id or "root"
+    return CATEGORY_CACHE_DIR / f"{store_id}_{key}.json"
+
+
+def _read_category_list_cache(store_id: int, parent_id: str | None) -> list[dict[str, Any]] | None:
+    path = _category_list_cache_path(store_id, parent_id)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if time.time() - float(payload.get("cached_at") or 0) > CATEGORY_LIST_CACHE_SECONDS:
+            return None
+        data = payload.get("data")
+        return data if isinstance(data, list) else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _write_category_list_cache(store_id: int, parent_id: str | None, data: list[dict[str, Any]]) -> None:
+    CATEGORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _category_list_cache_path(store_id, parent_id)
+    path.write_text(
+        json.dumps({"cached_at": time.time(), "data": data}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def _lingxing_list(store_id: int, parent_id: str | None, client: LingxingClient) -> list[dict[str, Any]]:
     if parent_id:
         body = {"storeId": store_id, "categoryUniqueId": parent_id}
@@ -433,7 +467,12 @@ def list_categories(store_id: int | None = None, parent_id: str | None = None) -
         }
 
     try:
-        data = _lingxing_list(api_store_id, parent_id, client)
+        cached = _read_category_list_cache(api_store_id, parent_id)
+        if cached is not None:
+            data = cached
+        else:
+            data = _lingxing_list(api_store_id, parent_id, client)
+            _write_category_list_cache(api_store_id, parent_id, data)
         return {
             "source": "lingxing",
             "store_id": store_id,
@@ -462,6 +501,96 @@ def list_categories(store_id: int | None = None, parent_id: str | None = None) -
             "parent_id": parent_id,
             "data": _mock_list(parent_id),
             "message": f"领星接口暂不可用，已回退演示数据。{hint}",
+        }
+
+
+def _category_index_cache_path(store_id: int) -> Path:
+    return CATEGORY_CACHE_DIR / f"{store_id}_search_index.json"
+
+
+def _build_category_index(store_id: int, client: LingxingClient, max_nodes: int = 1200) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    queue: list[tuple[str | None, list[str]]] = [(None, [])]
+
+    while queue and len(results) < max_nodes:
+        parent_id, path = queue.pop(0)
+        items = _lingxing_list(store_id, parent_id, client)
+        for item in items:
+            display_name = str(item.get("display_name") or item.get("name") or "")
+            current_path = path + [display_name]
+            node = {
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "name_zh": item.get("name_zh"),
+                "display_name": display_name,
+                "path": current_path,
+                "path_text": " > ".join(current_path),
+                "has_children": bool(item.get("has_children")),
+                "product_type": item.get("product_type") or "",
+                "browse_node_attributes": item.get("browse_node_attributes") or {},
+            }
+            results.append(node)
+            if item.get("has_children") and item.get("id"):
+                queue.append((str(item["id"]), current_path))
+    return results
+
+
+def _load_category_index(store_id: int, client: LingxingClient) -> list[dict[str, Any]]:
+    path = _category_index_cache_path(store_id)
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if time.time() - float(payload.get("cached_at") or 0) <= CATEGORY_INDEX_CACHE_SECONDS:
+                data = payload.get("data")
+                if isinstance(data, list) and data:
+                    return data
+        except (OSError, ValueError, TypeError):
+            pass
+
+    data = _build_category_index(store_id, client)
+    CATEGORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"cached_at": time.time(), "data": data}, ensure_ascii=False), encoding="utf-8")
+    return data
+
+
+def search_categories(store_id: int | None, keyword: str) -> dict[str, Any]:
+    keyword = keyword.strip().lower()
+    if not keyword:
+        return {"source": "mock", "data": [], "message": ""}
+
+    store_id = store_id or DEFAULT_STORE_ID
+    api_store_id = store_id if store_id >= 10000 else DEFAULT_STORE_ID
+    client = LingxingClient.from_env()
+    if client is None:
+        return {
+            "source": "mock",
+            "data": search_mock_categories(keyword),
+            "message": "未配置领星凭证，当前为演示搜索",
+        }
+
+    try:
+        index = _load_category_index(api_store_id, client)
+        results = [
+            item
+            for item in index
+            if keyword in item["path_text"].lower()
+            or keyword in str(item.get("name") or "").lower()
+            or keyword in str(item.get("display_name") or "").lower()
+        ]
+        return {
+            "source": "lingxing",
+            "data": results[:30],
+            "message": "数据来源：领星 API",
+        }
+    except Exception as exc:
+        if is_whitelist_error(exc):
+            proxied = remote_get("/api/categories/search", {"store_id": store_id, "q": keyword})
+            if proxied and proxied.get("data"):
+                return proxied
+        return {
+            "source": "mock",
+            "data": search_mock_categories(keyword),
+            "message": f"领星搜索暂不可用，已回退演示数据。{exc}",
         }
 
 
