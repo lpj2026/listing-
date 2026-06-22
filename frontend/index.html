@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Amazon 创建产品</title>
-    <link rel="stylesheet" href="styles.css?v=20260611-6" />
+    <link rel="stylesheet" href="styles.css?v=20260618-1" />
   </head>
   <body>
     <header class="topbar">
@@ -14,7 +14,7 @@
       </div>
       <nav>
         <a class="active" href="create-product">产品</a>
-        <a href="listing-tools">Listing 评分与生成</a>
+        <a href="listing-tools">Listing 评分</a>
       </nav>
     </header>
 
@@ -27,7 +27,7 @@
         <button class="btn warning">引用产品</button>
         <button class="btn primary-outline" id="saveOnlyTop">保存</button>
         <button class="btn primary" id="publishTop">保存并发布</button>
-        <button class="btn success" id="importToListingTop" title="将当前产品信息导入 Listing 评分与生成">一键导入 Listing 分析</button>
+        <button class="btn success" id="importToListingTop" title="将当前产品信息导入 Listing 评分">一键导入 Listing 评分</button>
       </div>
 
       <section class="notice">
@@ -225,6 +225,7 @@
                   <input name="product_id" id="productIdInput" placeholder="必填项, Product ID" />
                   <button class="btn blue" type="button" id="autoFetchProductId">自动获取</button>
                 </div>
+                <p class="field-hint hidden" id="productIdExemptHint">已选择 UPC 豁免且类型为 UPC，无需填写商品编码；刊登时将声明无 Product ID。</p>
                 <p class="field-error" id="productIdError">请填写Product ID</p>
               </div>
             </div>
@@ -398,7 +399,7 @@
           <button class="btn warning" type="button">引用产品</button>
           <button class="btn primary-outline" type="button" id="saveOnlyBottom">保存</button>
           <button class="btn primary" type="button" id="publishBottom">保存并发布</button>
-          <button class="btn success" type="button" id="importToListingBottom" title="将当前产品信息导入 Listing 评分与生成">一键导入 Listing 分析</button>
+          <button class="btn success" type="button" id="importToListingBottom" title="将当前产品信息导入 Listing 评分">一键导入 Listing 评分</button>
         </div>
       </form>
     </main>
@@ -440,6 +441,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260611-8"></script>
+    <script src="app.js?v=20260618-3"></script>
   </body>
 </html>

@@ -1,290 +1,461 @@
-"""Listing Generator (multi-plan) & Scorer (detailed diagnostic)."""
+"""Listing Scorer & Optimizer (score → optimize → rescore loop)."""
 from __future__ import annotations
 
+import hashlib
+import json
+from collections import OrderedDict
 from typing import Any
 
-from ai_service import _chat, extract_json
+from ai_service import chat_json
+from listing_rubrics import build_category_rubric_block, extract_rubric_attributes
+from listing_rules import compute_rule_score, format_rules_for_prompt, merge_rule_and_ai_scores
+from listing_score_model import DIM_KEYS
+from publish_readiness import check_publish_readiness
 
-# ── Generator ─────────────────────────────────────────────────────
+_RULE_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_RULE_CACHE_MAX = 128
+AI_SCORE_TEMPERATURE = 0.1
+OPTIMIZE_TEMPERATURE = 0.45
+RESCORE_TARGET = 75
 
-GENERATOR_SYSTEM = """You are a senior Amazon copywriting strategist. Your job is to analyze the product data provided and generate 2-3 distinct listing plans, each with a different market positioning strategy.
+_DIM_LABELS = {
+    "title": "标题",
+    "bullets": "Bullet Points",
+    "description": "描述",
+    "keywords": "Search Terms / 关键词",
+    "compliance": "合规与展示",
+}
 
-For each plan you MUST include:
-1. "strategy": the marketing angle (e.g. "专业性能型", "性价比实用型", "高端品质型")
-2. "reasoning": WHY this strategy works for this product — 2-3 sentences in Chinese explaining the logic
-3. "buyer_profile": who this plan targets, in Chinese
-4. "expected_benefit": what conversion/CTR improvement to expect, in Chinese
-5. "title": full Amazon title in English, 150-200 characters
-6. "bullets": exactly 5 bullet points in English, each 80-250 chars, with category-relevant prefixes like [PREMIUM QUALITY], [PERFECT FIT], [EASY INSTALLATION], etc.
-7. "description": HTML-formatted product description in English with <b> headers and <ul> lists
-8. "search_terms": space-separated keywords, max 250 chars, NOT repeating title words
+_DIM_CRITERIA = {
+    "title": "关键词策略、可读性、搜索意图（不含长度/品牌/格式）",
+    "bullets": "利益导向文案、说服力、关键词覆盖（不含条数/长度/重复/emoji）",
+    "description": "叙事、信任感、关键词 reinforcement（不含 HTML 长度）",
+    "keywords": "搜索词策略、同义词、长尾意图（不含格式/重复/与标题重叠）",
+    "compliance": "呈现质量（不含图片数/违禁词/emoji）",
+}
 
-Output ONLY valid JSON, no markdown fences:
-{
-  "plans": [
-    {
-      "strategy": "...",
-      "reasoning": "...",
-      "buyer_profile": "...",
-      "expected_benefit": "...",
-      "title": "...",
-      "bullets": ["...","...","...","...","..."],
-      "description": "...",
-      "search_terms": "..."
-    }
-  ]
-}"""
+_DIM_SYSTEM = """You are an Amazon listing quality auditor scoring ONE dimension only (soft quality).
+Hard rule checks are already done — do NOT re-report length limits, brand, emoji, prohibited words, or counts.
 
+Return JSON only:
+{"score": 0, "positives": ["..."], "issues": [{"issue":"...","why_matters":"...","how_to_fix":"...","expected_gain":"..."}], "note": "一句中文小结"}"""
 
-def generate_plans(data: dict[str, Any]) -> dict[str, Any]:
-    """Generate 2-3 listing plans from structured product data."""
-    product_name = str(data.get("product_name", "")).strip()
-    if not product_name:
-        raise ValueError("product_name 不能为空")
+OPTIMIZE_SYSTEM = """You are an Amazon listing optimization expert. Fix EVERY issue in the diagnostic.
 
-    user_prompt_parts = [f"Product: {product_name}"]
+CRITICAL:
+- optimized_content = ACTUAL rewritten copy, not suggestions
+- optimized_listing must incorporate ALL fixes
+- Title 150-200 chars, include brand; Bullets exactly 5, 80-250 chars each, [PREFIX] format, no emoji
+- Description HTML 500+ chars; Search terms ≤250, lowercase, space-separated
+- NO prohibited words: best, #1, guaranteed, miracle, etc.
 
-    category = str(data.get("category", ""))
-    if category:
-        user_prompt_parts.append(f"Category: {category}")
+Return JSON:
+{"optimizations": [{"target":"title","original_text":"...","issue_summary":"...","why_optimize":"...","expected_benefit":"...","optimized_content":"..."}], "optimized_listing": {"title":"...","bullets":["..."],"description":"...","search_terms":"..."}, "overall_strategy": "..."}"""
 
-    price = data.get("price")
-    if price:
-        user_prompt_parts.append(f"Target Price: ${price}")
-
-    material = str(data.get("material", ""))
-    process = str(data.get("process", ""))
-    if material or process:
-        user_prompt_parts.append(f"Material & Process: {material} / {process}")
-
-    specs = []
-    for key in ("spec1_name", "spec2_name"):
-        name = str(data.get(key, ""))
-        if name:
-            val = str(data.get(key.replace("name", "value"), ""))
-            specs.append(f"{name}: {val}")
-    if specs:
-        user_prompt_parts.append("Key Specs: " + "; ".join(specs))
-
-    differentiator = str(data.get("differentiator", ""))
-    if differentiator:
-        user_prompt_parts.append(f"Key Differentiator: {differentiator}")
-
-    audience = str(data.get("audience", ""))
-    if audience:
-        user_prompt_parts.append(f"Target Audience: {audience}")
-
-    competitor_asin = str(data.get("competitor_asin", ""))
-    if competitor_asin:
-        user_prompt_parts.append(f"Competitor ASIN: {competitor_asin}")
-
-    positionings = data.get("positioning", [])
-    if positionings and isinstance(positionings, list):
-        user_prompt_parts.append(f"Desired Positionings: {', '.join(positionings)}")
-
-    user_prompt = "\n".join(user_prompt_parts)
-    user_prompt += "\n\nGenerate 2-3 listing plans based on this product data."
-
-    messages = [
-        {"role": "system", "content": GENERATOR_SYSTEM},
-        {"role": "user", "content": user_prompt},
-    ]
-    raw = _chat(messages, temperature=0.8, max_tokens=4096)
-    result = extract_json(raw)
-
-    plans = result.get("plans", [])
-    if not plans:
-        raise RuntimeError("AI 未返回任何方案")
-    for plan in plans:
-        bullets = plan.get("bullets", [])
-        if not isinstance(bullets, list):
-            bullets = []
-        while len(bullets) < 5:
-            bullets.append("")
-        plan["bullets"] = bullets[:5]
-        plan.setdefault("strategy", "通用方案")
-        plan.setdefault("reasoning", "")
-        plan.setdefault("buyer_profile", "")
-        plan.setdefault("expected_benefit", "")
-
-    return {"plans": plans, "plan_count": len(plans)}
+_RETRY_SYSTEM = """Fix ONLY the listed rule failures in this listing. Return JSON:
+{"optimized_listing": {"title":"...","bullets":["..."],"description":"...","search_terms":"..."}}"""
 
 
-# ── Scorer ────────────────────────────────────────────────────────
-
-SCORER_SYSTEM = """You are an Amazon listing quality auditor with deep knowledge of A9 algorithm ranking factors and buyer psychology. Your task is to perform a detailed diagnostic on the provided listing.
-
-Score and diagnose these dimensions (each 0-25 points, total 100):
-1. 标题质量 (Title Quality): keyword placement, length 150-200 ideal, brand inclusion, readability, search match
-2. Bullet Points: count (5 optimal), benefit-driven language, uniqueness, keyword coverage, persuasive power
-3. 描述质量 (Description Quality): HTML formatting, completeness, keyword reinforcement, trust-building elements
-4. 关键词与搜索 (Keywords & Search): search terms optimization, title-keyword distinction, density
-5. 合规与展示 (Compliance & Presentation): prohibited words, image sufficiency, price signals
-
-For EACH issue found, provide:
-- "issue": what's wrong (Chinese)
-- "why_matters": why this matters to ranking/conversion (Chinese, explain the Amazon mechanism)
-- "how_to_fix": specific actionable fix (Chinese)
-- "expected_gain": estimated improvement after fixing (Chinese, e.g. "预计搜索曝光提升15-20%")
-
-For each dimension, also list what's done well ("positives").
-
-Output ONLY valid JSON:
-{
-  "overall_score": 68,
-  "overall_grade": "良好",
-  "overall_summary": "整体评价...",
-  "dimensions": {
-    "title": {
-      "score": 18, "max": 25,
-      "positives": ["长度合理", "..."],
-      "issues": [
-        {"issue": "...", "why_matters": "...", "how_to_fix": "...", "expected_gain": "..."}
-      ]
-    },
-    "bullets": { ... },
-    "description": { ... },
-    "keywords": { ... },
-    "compliance": { ... }
-  },
-  "top_priority": ["最紧急的1-3条建议"]
-}"""
-
-
-def score_listing(data: dict[str, Any]) -> dict[str, Any]:
-    """Detailed AI-powered listing diagnostic."""
-    title = str(data.get("title", "")).strip()
-    if not title:
+def score_listing(
+    data: dict[str, Any],
+    *,
+    skip_ai: bool = False,
+    previous_result: dict[str, Any] | None = None,
+    rescore_mode: bool = False,
+) -> dict[str, Any]:
+    """Rule + AI hybrid listing diagnostic."""
+    payload = _normalize_score_payload(data)
+    if not payload["title"]:
         raise ValueError("title 不能为空")
 
-    bullets = data.get("bullets") or []
-    if isinstance(bullets, list):
-        bullets_text = "\n".join(f"{i+1}. {b}" for i, b in enumerate(bullets) if b and str(b).strip())
+    rule_result, rule_cached = _get_rule_score(payload)
+    publish_ready = check_publish_readiness(payload)
+
+    if skip_ai:
+        merged = merge_rule_and_ai_scores(rule_result, {"dimensions": {}, "overall_summary": "", "top_priority": []})
+        merged["overall_summary"] = "规则评分（未调用 AI）"
+        merged["rule_cached"] = rule_cached
+        merged["publish_readiness"] = publish_ready
+        return merged
+
+    changed_dims = _detect_changed_dims(previous_result, payload) if rescore_mode and previous_result else set(DIM_KEYS)
+    confirm_meta = None
+
+    if rescore_mode and previous_result and changed_dims != set(DIM_KEYS):
+        ai_result = _score_ai_partial(payload, rule_result, previous_result, changed_dims)
+        merged = merge_rule_and_ai_scores(rule_result, ai_result)
+        merged["rescore_partial"] = True
+        merged["rescore_dims_scored"] = sorted(changed_dims)
+    elif payload.get("ai_confirm"):
+        ai_result = _score_ai_per_dimension(payload, rule_result, confirm=True)
+        confirm_meta = ai_result.pop("_confirm_meta", None)
+        merged = merge_rule_and_ai_scores(rule_result, ai_result)
     else:
-        bullets_text = ""
+        ai_result = _score_ai_per_dimension(payload, rule_result)
+        merged = merge_rule_and_ai_scores(rule_result, ai_result)
 
-    user_prompt = f"""Diagnose this Amazon listing:
+    merged["ai_raw_dimensions"] = ai_result.get("dimensions") or {}
+    merged["ai_scoring_mode"] = "per_dimension"
+    merged["rule_cached"] = rule_cached
+    merged["publish_readiness"] = publish_ready
+    merged["ai_score_normalized"] = True
+    merged["_listing_payload"] = {
+        "title": payload["title"],
+        "bullets": payload.get("bullets"),
+        "description": payload.get("description"),
+        "search_terms": payload.get("search_terms"),
+    }
+    if confirm_meta:
+        merged["ai_confirm"] = confirm_meta
 
-Title: {title}
-Bullet Points:
-{bullets_text or "(none)"}
-Description: {str(data.get('description', '')).strip() or '(none)'}
-Search Terms: {str(data.get('search_terms', '')).strip() or '(none)'}
-Image Count: {data.get('image_count', 0)}
-Price: ${data.get('price') if data.get('price') else 'N/A'}
-Category: {str(data.get('category', '')).strip() or 'N/A'}
+    if publish_ready.get("score", 100) < 80:
+        note = f"刊登就绪度 {publish_ready.get('score')}/100 — 评分高不代表可刊登，请查看就绪度清单"
+        merged["overall_summary"] = f"{merged.get('overall_summary', '')} {note}".strip()
 
-Provide detailed diagnostic in Chinese, following the JSON format exactly."""
+    return merged
 
-    messages = [
-        {"role": "system", "content": SCORER_SYSTEM},
-        {"role": "user", "content": user_prompt},
-    ]
-    raw = _chat(messages, temperature=0.3, max_tokens=4096)
-    result = extract_json(raw)
 
-    result.setdefault("overall_score", 0)
-    result.setdefault("overall_grade", "需优化")
-    result.setdefault("overall_summary", "")
-    result.setdefault("top_priority", [])
-    for dim_key in ("title", "bullets", "description", "keywords", "compliance"):
-        if dim_key not in result.get("dimensions", {}):
-            result.setdefault("dimensions", {})[dim_key] = {
-                "score": 0, "max": 25, "positives": [], "issues": []
-            }
+def _normalize_score_payload(data: dict[str, Any]) -> dict[str, Any]:
+    product_type = str(data.get("product_type") or data.get("category") or "").strip()
+    category_path = str(data.get("category_path") or data.get("category_name") or "").strip()
+    brand = str(data.get("brand") or "").strip()
+    manufacturer = str(data.get("manufacturer") or brand).strip()
+
+    bullets_raw = data.get("bullets") or []
+    bullets = [str(b).strip() for b in bullets_raw if b and str(b).strip()] if isinstance(bullets_raw, list) else []
+
+    raw_img = data.get("image_count")
+    image_count: int | None
+    if raw_img is None or raw_img == "":
+        image_count = None
+    else:
+        try:
+            image_count = int(raw_img)
+        except (TypeError, ValueError):
+            image_count = None
+
+    out: dict[str, Any] = {
+        "title": str(data.get("title", "")).strip(),
+        "bullets": bullets,
+        "description": str(data.get("description", "")).strip(),
+        "search_terms": str(data.get("search_terms", "")).strip(),
+        "image_count": image_count,
+        "images_linked": bool(data.get("images_linked")),
+        "price": data.get("price"),
+        "product_type": product_type,
+        "category": product_type,
+        "category_path": category_path,
+        "brand": brand,
+        "manufacturer": manufacturer,
+        "msku": str(data.get("msku") or data.get("seller_sku") or data.get("parent_sku") or "").strip(),
+        "upc_exemption": str(data.get("upc_exemption") or "").strip(),
+        "external_product_id": str(data.get("external_product_id") or data.get("upc") or "").strip(),
+        "attributes": extract_rubric_attributes(data),
+        "ai_confirm": bool(data.get("ai_confirm")),
+        "product_images": data.get("product_images"),
+    }
+    for key, val in data.items():
+        if key not in out and val is not None and str(val).strip():
+            out[key] = val
+    return out
+
+
+def _rule_cache_key(payload: dict[str, Any]) -> str:
+    cache_payload = {k: payload[k] for k in (
+        "title", "bullets", "description", "search_terms",
+        "image_count", "images_linked", "brand", "manufacturer",
+    ) if k in payload}
+    return hashlib.sha256(json.dumps(cache_payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _get_rule_score(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    key = _rule_cache_key(payload)
+    if key in _RULE_CACHE:
+        _RULE_CACHE.move_to_end(key)
+        return _RULE_CACHE[key], True
+    result = compute_rule_score(payload)
+    _RULE_CACHE[key] = result
+    if len(_RULE_CACHE) > _RULE_CACHE_MAX:
+        _RULE_CACHE.popitem(last=False)
+    return result, False
+
+
+def _listing_context_block(payload: dict[str, Any]) -> str:
+    bullets = payload.get("bullets") or []
+    bullets_text = "\n".join(f"{i + 1}. {b}" for i, b in enumerate(bullets) if b)
+    img = payload.get("image_count")
+    img_text = str(img) if img is not None else "unknown"
+    attrs = payload.get("attributes") or {}
+    attr_block = "\n".join(f"  {k}: {v}" for k, v in attrs.items()) or "  (none)"
+    return f"""Brand: {payload.get('brand') or 'N/A'}
+Manufacturer: {payload.get('manufacturer') or 'N/A'}
+Product type: {payload.get('product_type') or 'N/A'}
+Category path: {payload.get('category_path') or 'N/A'}
+Price: ${payload.get('price') if payload.get('price') else 'N/A'}
+Images: {img_text}
+Attributes:
+{attr_block}
+
+Title: {payload['title']}
+Bullets:
+{bullets_text or '(none)'}
+Description: {payload.get('description') or '(none)'}
+Search Terms: {payload.get('search_terms') or '(none)'}"""
+
+
+def _dim_content_for(dim: str, payload: dict[str, Any]) -> str:
+    if dim == "title":
+        return f"Title to score:\n{payload['title']}"
+    if dim == "bullets":
+        bullets = payload.get("bullets") or []
+        text = "\n".join(f"{i + 1}. {b}" for i, b in enumerate(bullets) if b)
+        return f"Bullet Points to score:\n{text or '(none)'}"
+    if dim == "description":
+        return f"Description to score:\n{payload.get('description') or '(none)'}"
+    if dim == "keywords":
+        return f"Search Terms to score:\n{payload.get('search_terms') or '(none)'}"
+    return _listing_context_block(payload) + "\n\nScore overall presentation quality for this listing."
+
+
+def _score_one_dimension(dim: str, payload: dict[str, Any], rule_result: dict[str, Any]) -> dict[str, Any]:
+    rubric = build_category_rubric_block(payload) if dim in {"bullets", "description", "compliance"} else ""
+    user = f"""Score dimension: {_DIM_LABELS[dim]} ({dim})
+Criteria: {_DIM_CRITERIA[dim]}
+
+{_dim_content_for(dim, payload)}
+
+{f'Category rubric:{chr(10)}{rubric}' if rubric else ''}
+
+Relevant rule checks (do NOT re-score these):
+{format_rules_for_prompt(rule_result)}
+
+Score 0-10 integer. Issues in Chinese."""
+
+    raw = chat_json(
+        [{"role": "system", "content": _DIM_SYSTEM}, {"role": "user", "content": user}],
+        temperature=AI_SCORE_TEMPERATURE,
+        max_tokens=1536,
+    )
+    return _normalize_dim_ai(raw, dim)
+
+
+def _normalize_dim_ai(raw: dict[str, Any], dim: str) -> dict[str, Any]:
+    score = _clamp_score(raw.get("score", 0))
+    issues = [i for i in (raw.get("issues") or []) if isinstance(i, dict)]
+    positives = [str(p) for p in (raw.get("positives") or []) if p]
+    return {"score": score, "max": 10, "positives": positives, "issues": issues, "note": str(raw.get("note") or "").strip()}
+
+
+def _score_ai_per_dimension(payload: dict[str, Any], rule_result: dict[str, Any], *, confirm: bool = False) -> dict[str, Any]:
+    if not confirm:
+        return _assemble_ai_from_dims({dim: _score_one_dimension(dim, payload, rule_result) for dim in DIM_KEYS})
+
+    runs = [{dim: _score_one_dimension(dim, payload, rule_result) for dim in DIM_KEYS} for _ in range(2)]
+    merged_dims: dict[str, Any] = {}
+    per_dim = []
+    for dim in DIM_KEYS:
+        s1, s2 = runs[0][dim]["score"], runs[1][dim]["score"]
+        avg = int((s1 + s2) / 2)
+        issues: list[dict] = []
+        seen: set[str] = set()
+        for run in runs:
+            for issue in run[dim].get("issues") or []:
+                sig = str(issue.get("issue", "")).strip()
+                if sig and sig not in seen:
+                    seen.add(sig)
+                    issues.append(dict(issue))
+        positives = list(dict.fromkeys(runs[0][dim]["positives"] + runs[1][dim]["positives"]))
+        merged_dims[dim] = {"score": avg, "max": 10, "positives": positives, "issues": issues, "note": runs[0][dim].get("note", "")}
+        per_dim.append({"dimension": dim, "run1": s1, "run2": s2, "averaged": avg})
+
+    result = _assemble_ai_from_dims(merged_dims)
+    result["_confirm_meta"] = {"runs": 2, "per_dimension": per_dim}
     return result
 
 
-# ── Combined: Score + Targeted Optimization ─────────────────────────
-
-OPTIMIZE_SYSTEM = """You are an Amazon listing optimization expert. You receive a listing AND its scoring diagnostic. Your job is to fix EVERY issue found in the scoring and produce a measurably better listing.
-
-CRITICAL RULES — VIOLATION WILL CAUSE REJECTION:
-1. Read EVERY issue in the scoring diagnostic carefully. You MUST fix ALL of them.
-2. For each fix, the "optimized_content" field MUST contain the ACTUAL improved text — not a generic suggestion. Show the concrete rewritten copy.
-3. The "optimized_listing" at the end MUST incorporate ALL fixes. It is a complete, ready-to-use listing. Every weakness from the scoring must be addressed in this listing.
-4. Title 150-200 chars STRICT, start with core keyword, include brand.
-5. Bullets exactly 5, each 80-250 chars, prefix format [PREMIUM QUALITY] etc. NO emoji, NO ✅❤✓.
-6. Description HTML format, min 500 chars.
-7. Search terms ≤250 chars STRICT, distinct from title words, include synonyms.
-8. NO prohibited words: "best", "#1", "guaranteed", "risk free", "FDA approved", "miracle", etc.
-9. Each "optimized_content" MUST be a single plain-text string, NOT an array, NOT JSON.
-10. Optimized listing must score 75+. Think step-by-step: issues → fixes → verify → assemble.
-
-Output ONLY valid JSON, no markdown fences:
-{
-  "score_comparison": {
-    "original_score": 40,
-    "estimated_new_score": 82,
-    "why_improved": "具体说明哪些改进项贡献了分数提升"
-  },
-  "optimizations": [
-    {
-      "target": "title",
-      "original_text": "原始标题原文",
-      "issue_summary": "当前问题",
-      "why_optimize": "为什么必须优化",
-      "expected_benefit": "优化后预期效果",
-      "optimized_content": "完整优化后的新标题"
+def _assemble_ai_from_dims(dims: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    notes = [dims[d].get("note", "") for d in DIM_KEYS if dims.get(d, {}).get("note")]
+    priorities: list[str] = []
+    for dim in DIM_KEYS:
+        for issue in dims.get(dim, {}).get("issues") or []:
+            text = str(issue.get("issue", "")).strip()
+            if text:
+                priorities.append(text)
+    return {
+        "overall_score": sum(dims[d]["score"] for d in DIM_KEYS),
+        "overall_summary": "；".join(n for n in notes if n) or "分维度 AI 软质量评估完成",
+        "dimensions": dims,
+        "top_priority": priorities[:3],
     }
-  ],
-  "optimized_listing": {
-    "title": "...",
-    "bullets": ["...","...","...","...","..."],
-    "description": "...",
-    "search_terms": "..."
-  },
-  "overall_strategy": "整体优化策略说明"
-}"""
+
+
+def _score_ai_partial(payload: dict[str, Any], rule_result: dict[str, Any], previous: dict[str, Any], changed_dims: set[str]) -> dict[str, Any]:
+    prev_raw = previous.get("ai_raw_dimensions") or {}
+    dims: dict[str, Any] = {}
+    for dim in DIM_KEYS:
+        if dim in changed_dims or dim not in prev_raw:
+            dims[dim] = _score_one_dimension(dim, payload, rule_result)
+        else:
+            dims[dim] = dict(prev_raw[dim])
+    return _assemble_ai_from_dims(dims)
+
+
+def _detect_changed_dims(previous: dict[str, Any], payload: dict[str, Any]) -> set[str]:
+    prev_data = previous.get("_listing_payload") or {}
+    changed: set[str] = set()
+    if str(prev_data.get("title", "")) != payload["title"]:
+        changed.add("title")
+    if list(prev_data.get("bullets") or []) != list(payload.get("bullets") or []):
+        changed.add("bullets")
+    if str(prev_data.get("description", "")) != str(payload.get("description", "")):
+        changed.add("description")
+    if str(prev_data.get("search_terms", "")) != str(payload.get("search_terms", "")):
+        changed.add("keywords")
+    return changed or set(DIM_KEYS)
+
+
+def _clamp_score(value: Any) -> int:
+    try:
+        return max(0, min(10, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return 0
 
 
 def optimize_listing(listing_data: dict[str, Any], scoring_result: dict[str, Any]) -> dict[str, Any]:
-    """Generate targeted optimizations based on scoring weaknesses."""
-    user_prompt = f"""Current Listing:
-Title: {str(listing_data.get('title', ''))}
-Bullets: {chr(10).join(str(b) for b in (listing_data.get('bullets') or []) if b)}
-Description: {str(listing_data.get('description', ''))}
-Search Terms: {str(listing_data.get('search_terms', ''))}
-Category: {str(listing_data.get('category', ''))}
+    listing_data = _normalize_score_payload(listing_data)
+    before_score = int(scoring_result.get("overall_score") or 0)
 
-Scoring Results:
-Overall Score: {scoring_result.get('overall_score', 'N/A')}/100
-Grade: {scoring_result.get('overall_grade', 'N/A')}
+    user_prompt = f"""Current Listing:
+{_listing_context_block(listing_data)}
+
+Scoring: {before_score}/100 · {scoring_result.get('overall_grade', '')}
+Failed rules: {_failed_rule_summary(scoring_result)}
 
 Dimensions:
 {_format_dimensions_for_prompt(scoring_result.get('dimensions', {}))}
 
-IMPORTANT: The original listing scored {scoring_result.get('overall_score', '?')}/100. Your optimized version MUST address EVERY issue listed above. The optimized content in each optimization entry MUST be the actual rewritten text — not a suggestion, not a template, but the concrete copy. The final optimized_listing MUST incorporate ALL fixes and should score 75+/100.
+Address EVERY issue. Target rescore ≥ {RESCORE_TARGET}/100."""
 
-Now generate the complete optimization plan with all fixes applied."""
-
-    messages = [
-        {"role": "system", "content": OPTIMIZE_SYSTEM},
-        {"role": "user", "content": user_prompt},
-    ]
-    raw = _chat(messages, temperature=0.7, max_tokens=4096)
-    result = extract_json(raw)
+    result = chat_json(
+        [{"role": "system", "content": OPTIMIZE_SYSTEM}, {"role": "user", "content": user_prompt}],
+        temperature=OPTIMIZE_TEMPERATURE,
+        max_tokens=4096,
+    )
     result.setdefault("optimizations", [])
     result.setdefault("optimized_listing", {})
     result.setdefault("overall_strategy", "")
-    result.setdefault("score_comparison", {})
 
-    # Safety: sanitize optimized listing
-    ol = result.get("optimized_listing") or {}
-    if isinstance(ol, dict):
-        # Strip emoji from bullets
-        if isinstance(ol.get("bullets"), list):
-            ol["bullets"] = [_strip_emoji(str(b)) for b in ol["bullets"]]
-        if isinstance(ol.get("title"), str):
-            ol["title"] = _strip_emoji(ol["title"])[:200]
-        if isinstance(ol.get("search_terms"), str):
-            ol["search_terms"] = ol["search_terms"][:250]
-        # Ensure bullets is a list of strings
-        for opt in result.get("optimizations") or []:
-            if isinstance(opt.get("optimized_content"), list):
-                opt["optimized_content"] = "\n".join(str(x) for x in opt["optimized_content"])
+    ol = _sanitize_optimized_listing(result.get("optimized_listing") or {})
+    result["optimized_listing"] = ol
 
+    for opt in result.get("optimizations") or []:
+        if isinstance(opt.get("optimized_content"), list):
+            opt["optimized_content"] = "\n".join(str(x) for x in opt["optimized_content"])
+
+    scoring_result = dict(scoring_result)
+    scoring_result["_listing_payload"] = {
+        "title": listing_data["title"],
+        "bullets": listing_data.get("bullets"),
+        "description": listing_data.get("description"),
+        "search_terms": listing_data.get("search_terms"),
+    }
+
+    rescore_payload = _build_rescore_payload(listing_data, ol)
+    rescore_result = score_listing(rescore_payload, previous_result=scoring_result, rescore_mode=True)
+    after_score = int(rescore_result.get("overall_score") or 0)
+
+    if after_score < RESCORE_TARGET:
+        failed = [c for c in rescore_result.get("rule_checks") or [] if not c.get("passed") and not c.get("skipped")]
+        if failed:
+            ol = _retry_failed_rules(ol, failed)
+            rescore_payload = _build_rescore_payload(listing_data, ol)
+            retry_result = score_listing(rescore_payload, previous_result=rescore_result, rescore_mode=True)
+            if int(retry_result.get("overall_score") or 0) >= after_score:
+                rescore_result = retry_result
+                result["optimized_listing"] = ol
+                after_score = int(rescore_result.get("overall_score") or 0)
+                result["retry_for_rules"] = True
+
+    result["score_comparison"] = {
+        "original_score": before_score,
+        "verified_new_score": after_score,
+        "score_delta": after_score - before_score,
+        "original_grade": scoring_result.get("overall_grade", ""),
+        "verified_grade": rescore_result.get("overall_grade", ""),
+        "why_improved": _summarize_score_delta(before_score, after_score, scoring_result, rescore_result),
+        "estimated_new_score": after_score,
+        "target_met": after_score >= RESCORE_TARGET,
+    }
+    result["rescore"] = rescore_result
+    result["loop_complete"] = True
     return result
+
+
+def _failed_rule_summary(scoring_result: dict[str, Any]) -> str:
+    failed = [c for c in scoring_result.get("rule_checks") or [] if not c.get("passed") and not c.get("skipped")]
+    return "(none)" if not failed else "; ".join(f"{c.get('id')}: {str(c.get('message', ''))[:60]}" for c in failed[:8])
+
+
+def _retry_failed_rules(listing: dict[str, Any], failed_rules: list[dict[str, Any]]) -> dict[str, Any]:
+    fixes = "\n".join(f"- {c.get('id')}: {c.get('message')}" for c in failed_rules if c.get("message"))
+    prompt = f"""Listing:
+Title: {listing.get('title', '')}
+Bullets: {json.dumps(listing.get('bullets') or [], ensure_ascii=False)}
+Description: {str(listing.get('description', ''))[:800]}
+Search Terms: {listing.get('search_terms', '')}
+
+Fix ONLY these rule failures:
+{fixes}"""
+    try:
+        raw = chat_json(
+            [{"role": "system", "content": _RETRY_SYSTEM}, {"role": "user", "content": prompt}],
+            temperature=OPTIMIZE_TEMPERATURE,
+            max_tokens=4096,
+        )
+        patched = raw.get("optimized_listing") or raw
+        return _sanitize_optimized_listing({**listing, **patched})
+    except Exception:
+        return listing
+
+
+def _build_rescore_payload(listing_data: dict[str, Any], optimized: dict[str, Any]) -> dict[str, Any]:
+    bullets = optimized.get("bullets") or listing_data.get("bullets") or []
+    if not isinstance(bullets, list):
+        bullets = []
+    base = _normalize_score_payload(listing_data)
+    base.update({
+        "title": str(optimized.get("title") or listing_data.get("title") or "").strip(),
+        "bullets": [str(b).strip() for b in bullets if b and str(b).strip()],
+        "description": str(optimized.get("description") or listing_data.get("description") or "").strip(),
+        "search_terms": str(optimized.get("search_terms") or listing_data.get("search_terms") or "").strip(),
+    })
+    return base
+
+
+def _sanitize_optimized_listing(ol: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(ol, dict):
+        return {}
+    if isinstance(ol.get("bullets"), list):
+        ol["bullets"] = [_strip_emoji(str(b)) for b in ol["bullets"]]
+    if isinstance(ol.get("title"), str):
+        ol["title"] = _strip_emoji(ol["title"])[:200]
+    if isinstance(ol.get("description"), str):
+        ol["description"] = _strip_emoji(ol["description"])[:2000]
+    if isinstance(ol.get("search_terms"), str):
+        ol["search_terms"] = ol["search_terms"][:250]
+    return ol
+
+
+def _summarize_score_delta(before: int, after: int, before_result: dict, after_result: dict) -> str:
+    if after <= before:
+        return f"复评 {after}/100，未高于优化前 {before}/100"
+    labels = {"title": "标题", "bullets": "Bullets", "description": "描述", "keywords": "关键词", "compliance": "合规"}
+    improved = [f"{labels[k]}+{float((after_result.get('dimensions') or {}).get(k, {}).get('score', 0)) - float((before_result.get('dimensions') or {}).get(k, {}).get('score', 0)):.0f}"
+                for k in labels if float((after_result.get("dimensions") or {}).get(k, {}).get("score", 0)) > float((before_result.get("dimensions") or {}).get(k, {}).get("score", 0))]
+    detail = "、".join(improved) if improved else "各维度均有提升"
+    partial = after_result.get("rescore_partial")
+    extra = f"（部分复评：{','.join(after_result.get('rescore_dims_scored') or [])}）" if partial else ""
+    return f"复评 verified：{before}→{after}（+{after - before}）{extra}，提升：{detail}"
 
 
 def _strip_emoji(text: str) -> str:
@@ -295,9 +466,13 @@ def _strip_emoji(text: str) -> str:
 def _format_dimensions_for_prompt(dims: dict) -> str:
     lines = []
     for key, dim in dims.items():
-        score = dim.get("score", 0)
-        max_s = dim.get("max", 25)
-        issues = dim.get("issues", [])
-        issue_texts = [f"  - {i.get('issue', '')}" for i in issues[:3]]
-        lines.append(f"{key}: {score}/{max_s}\n" + "\n".join(issue_texts))
+        score, max_s = dim.get("score", 0), dim.get("max", 20)
+        header = f"{key}: {score}/{max_s}"
+        if dim.get("weight_pct"):
+            header += f" (权重{dim['weight_pct']}%)"
+        if dim.get("rule_score") is not None:
+            header += f" [规则{dim.get('rule_score')}+AI{dim.get('ai_score')}]"
+        issues = dim.get("issues") or []
+        issue_texts = [f"  - [{i.get('source', 'ai')}] {i.get('issue', '')}" + (f"\n    修复: {i['how_to_fix']}" if i.get("how_to_fix") else "") for i in issues if isinstance(i, dict)]
+        lines.append(header + "\n" + ("\n".join(issue_texts) if issue_texts else "  (无问题)"))
     return "\n".join(lines)

@@ -36,6 +36,41 @@ def _chat(messages: list[dict], *, temperature: float = 0.7, max_tokens: int = 4
     return content.strip()
 
 
+def chat_json(
+    messages: list[dict],
+    *,
+    temperature: float = 0.1,
+    max_tokens: int = 4096,
+) -> dict[str, Any]:
+    """Call chat API with structured JSON output mode."""
+    if not DEEPSEEK_KEY:
+        raise RuntimeError("未配置 AI_API_KEY，请在 .env 中设置")
+    url = f"{DEEPSEEK_BASE}/chat/completions"
+    payload: dict[str, Any] = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+    }
+    resp = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {DEEPSEEK_KEY}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=DEEPSEEK_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"AI API {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        raise RuntimeError("AI 返回空内容")
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        return extract_json(content)
+
+
 def extract_json(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)

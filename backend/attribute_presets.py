@@ -644,11 +644,20 @@ def apply_product_type_layout(
     baseline_required: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     preset = resolve_preset(product_type)
-    visible_keys = set(preset["visible_keys"])
-    preferred_keys = set(preset.get("required_keys") or [])
     baseline_keys = expand_required_dimension_keys(baseline_required or set())
     field_map = _prepare_field_map(fields)
     _inject_list_price_currency(field_map)
+
+    # For unknown product types, make ALL Schema-returned fields visible
+    # so required fields like load_capacity are never hidden in "more attributes"
+    is_unknown_type = product_type not in AUTOMOTIVE_TYPES and not product_type.endswith("_PART") and product_type not in {"HEADPHONES", "BABY_PRODUCT", "HARDWARE_TUBING", "PLUMBING_FIXTURE"}
+
+    if is_unknown_type:
+        visible_keys = set(field_map.keys())
+        preferred_keys = {key for key, field in field_map.items() if field.get("schema_required") or field.get("required_static")}
+    else:
+        visible_keys = set(preset["visible_keys"])
+        preferred_keys = set(preset.get("required_keys") or [])
 
     for key, field in field_map.items():
         field = _apply_field_overrides(field)
@@ -721,6 +730,18 @@ def apply_product_type_layout(
             used.add(key)
         append_section(section_fields, str(section.get("title") or "").strip(), bool(section.get("panel")))
 
+    # For unknown product types, don't use preset sections at all —
+    # group required fields first, then remaining.
+    if is_unknown_type and not used:
+        required_fields = [
+            field_map[key]
+            for key in sorted(field_map.keys(), key=lambda k: str(field_map[k].get("label_en") or k))
+            if key not in used and field_map[key].get("required")
+        ]
+        if required_fields:
+            append_section(required_fields, "亚马逊必填属性")
+            used.update(f["key"] for f in required_fields if f.get("key"))
+
     required_remaining = [
         field_map[key]
         for key in sorted(field_map.keys(), key=lambda item: str(field_map[item].get("label_en") or item))
@@ -736,9 +757,11 @@ def apply_product_type_layout(
         if key not in used
     ]
     if remaining:
-        ordered.append({"type": "subsection", "title": "更多属性", "advanced": True})
-        ordered.extend(remaining)
-
+        if is_unknown_type:
+            append_section(remaining, "更多属性")
+        else:
+            ordered.append({"type": "subsection", "title": "更多属性", "advanced": True})
+            ordered.extend(remaining)
     return ordered
 
 

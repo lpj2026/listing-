@@ -37,6 +37,9 @@ SKIP_FILE_NAMES = {".gitignore", "deploy_to_aliyun.py", "deploy.bat"}
 SKIP_REMOTE_REL_PATHS = {
     "data/drafts.json",
     "data/tasks.json",
+    "data/store.db",
+    "data/store.db-shm",
+    "data/store.db-wal",
 }
 SKIP_REMOTE_PREFIXES = ("data/uploads/",)
 

@@ -1050,9 +1050,19 @@ body {
 }
 
 .product-id-row input:disabled {
-  background: #f5f6f8;
-  color: #aaa;
+  background: #f0f2f5;
+  color: #9aa0ab;
+  border-color: #d8dce3;
   cursor: not-allowed;
+  pointer-events: auto;
+}
+
+#productIdRow.product-id-exempt .row-label::before {
+  color: #9aa0ab;
+}
+
+#productIdRow.product-id-exempt:not(.invalid) .field-error {
+  display: none;
 }
 
 .product-id-row .btn:disabled {

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Listing 评分与生成</title>
-  <link rel="stylesheet" href="listing-tools.css?v=1" />
+  <title>Listing 评分</title>
+  <link rel="stylesheet" href="listing-tools.css?v=10" />
 </head>
 <body>
   <header class="topbar">
@@ -14,116 +14,78 @@
     </div>
     <nav>
       <a href="create-product">产品</a>
-      <a class="active" href="listing-tools">Listing 评分与生成</a>
+      <a class="active" href="listing-tools">Listing 评分</a>
     </nav>
   </header>
 
   <main class="page">
-    <div class="breadcrumb">Amazon / Listing 评分与生成</div>
+    <div class="breadcrumb">Amazon / Listing 评分</div>
 
-    <div class="mode-tabs">
-      <button class="mode-tab active" data-mode="generate">生成文案</button>
-      <button class="mode-tab" data-mode="score">评分诊断</button>
-    </div>
+    <section class="card">
+      <h2>Listing 诊断</h2>
+      <p class="section-desc">粘贴或从产品页导入 Listing 内容，AI 将逐项诊断、优化并复评。</p>
 
-    <!-- ═══ GENERATOR ═══ -->
-    <div id="mode-generate" class="mode-content">
-      <section class="card">
-        <h2>产品信息</h2>
-        <p class="section-desc">填写越详细，AI 生成的方案越精准。带 * 必填。</p>
+      <div id="importBannerSlot"></div>
 
-        <div class="form-section">
-          <h3>基础信息</h3>
-          <div class="form-grid-3">
-            <label>产品名称 * <input id="genName" placeholder="如：Car Cabin Air Filter" /></label>
-            <label>产品类目 <select id="genCategory">
-              <option value="">请选择</option>
-              <option value="auto_parts">汽配</option>
-              <option value="home_kitchen">家居厨房</option>
-              <option value="electronics">电子</option>
-              <option value="sports_outdoors">运动户外</option>
-              <option value="baby">母婴</option>
-              <option value="tools">工具家装</option>
-              <option value="other">其他</option>
-            </select></label>
-            <label>目标售价 (USD) <input id="genPrice" type="number" step="0.01" min="0" placeholder="如 19.99" /></label>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h3>产品特性</h3>
-          <div class="form-grid-3">
-            <label>核心材质 <input id="genMaterial" placeholder="如：Activated Carbon + HEPA" /></label>
-            <label>制作工艺 <input id="genProcess" placeholder="如：Nano-coating, ISO certified" /></label>
-            <label>关键参数 1 <input id="genSpec1Name" placeholder="参数名" /></label>
-            <label>数值 <input id="genSpec1Value" placeholder="如：12000 Lumens" /></label>
-            <label>关键参数 2 <input id="genSpec2Name" placeholder="参数名" /></label>
-            <label>数值 <input id="genSpec2Value" placeholder="如：50000 Hours" /></label>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h3>竞争定位</h3>
-          <div class="form-grid-2">
-            <label>与竞品的核心差异 <textarea id="genDiff" rows="2" placeholder="你的产品和市场上同类产品相比，最大的不同是什么？"></textarea></label>
-            <label>目标用户群体 <input id="genAudience" placeholder="如：DIY车主、专业维修店、改装爱好者" /></label>
-            <label>参考竞品 ASIN <input id="genAsin" placeholder="选填，如：B0XXXXXXX" /></label>
-            <label>期望定位（可多选）
-              <div class="checkbox-group">
-                <label><input type="checkbox" name="positioning" value="performance" /> 高性能专业型</label>
-                <label><input type="checkbox" name="positioning" value="value" /> 高性价比实用型</label>
-                <label><input type="checkbox" name="positioning" value="premium" /> 高端品质型</label>
-                <label><input type="checkbox" name="positioning" value="eco" /> 环保健康型</label>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <button class="btn primary btn-lg" id="runGenerate">AI 生成多套方案</button>
-        <span id="genStatus" class="status-text hidden"></span>
-      </section>
-
-      <div id="plansContainer" class="hidden">
-        <!-- dynamically rendered -->
+      <div class="form-section">
+        <h3>标题</h3>
+        <label class="field-full">产品标题 *<textarea id="scoreTitle" rows="2" maxlength="200" placeholder="粘贴产品标题（Amazon 上限 200 字符）..."></textarea></label>
       </div>
-    </div>
 
-    <!-- ═══ SCORER ═══ -->
-    <div id="mode-score" class="mode-content hidden">
-      <section class="card">
-        <h2>Listing 诊断</h2>
-        <p class="section-desc">粘贴你的 Listing 内容，AI 逐项诊断并给出改进理由和预期效果。</p>
-
-        <div class="form-section">
-          <label>标题 * <textarea id="scoreTitle" rows="2" maxlength="250" placeholder="粘贴产品标题..."></textarea></label>
+      <div class="form-section">
+        <h3>Bullet Points</h3>
+        <div class="bullet-grid">
+          <label>Bullet 1<textarea id="scoreB1" rows="2" maxlength="500" placeholder="卖点 1"></textarea></label>
+          <label>Bullet 2<textarea id="scoreB2" rows="2" maxlength="500" placeholder="卖点 2"></textarea></label>
+          <label>Bullet 3<textarea id="scoreB3" rows="2" maxlength="500" placeholder="卖点 3"></textarea></label>
+          <label>Bullet 4<textarea id="scoreB4" rows="2" maxlength="500" placeholder="卖点 4"></textarea></label>
+          <label>Bullet 5<textarea id="scoreB5" rows="2" maxlength="500" placeholder="卖点 5"></textarea></label>
         </div>
-        <div class="form-section">
-          <label>Bullet Point 1 <textarea id="scoreB1" rows="2" maxlength="500"></textarea></label>
-          <label>Bullet Point 2 <textarea id="scoreB2" rows="2" maxlength="500"></textarea></label>
-          <label>Bullet Point 3 <textarea id="scoreB3" rows="2" maxlength="500"></textarea></label>
-          <label>Bullet Point 4 <textarea id="scoreB4" rows="2" maxlength="500"></textarea></label>
-          <label>Bullet Point 5 <textarea id="scoreB5" rows="2" maxlength="500"></textarea></label>
-        </div>
-        <div class="form-section">
-          <label>产品描述 <textarea id="scoreDesc" rows="4" maxlength="2500" placeholder="粘贴产品描述..."></textarea></label>
-        </div>
-        <div class="form-grid-3">
-          <label>Search Terms <textarea id="scoreST" rows="2" maxlength="250"></textarea></label>
-          <label>图片数量 <input id="scoreImgs" type="number" min="0" max="9" value="0" /></label>
-          <label>类目 <input id="scoreCat" placeholder="如 AUTO_PART" /></label>
-        </div>
-
-        <button class="btn primary btn-lg" id="runScore">AI 详细诊断</button>
-        <span id="scoreStatus" class="status-text hidden"></span>
-      </section>
-
-      <div id="diagnosisContainer" class="hidden">
-        <!-- dynamically rendered -->
       </div>
-    </div>
+
+      <div class="form-section">
+        <h3>产品描述</h3>
+        <label class="field-full">描述正文<textarea id="scoreDesc" rows="4" maxlength="2000" placeholder="粘贴产品描述（上限 2000 字符）..."></textarea></label>
+      </div>
+
+      <div class="form-section">
+        <h3>Search Terms</h3>
+        <label class="field-full">后台搜索词<textarea id="scoreST" rows="3" maxlength="250" placeholder="粘贴 Search Terms，≤250 字符"></textarea></label>
+        <p class="field-hint">与标题、Bullets 关键词互补，勿重复；全小写、空格分隔、不用标点。</p>
+      </div>
+
+      <div class="form-section">
+        <h3>补充信息</h3>
+        <p class="field-hint">以下字段影响合规与展示维度评分，建议一并填写。</p>
+        <div class="score-meta-grid score-meta-grid-3">
+          <label>品牌<input id="scoreBrand" maxlength="50" placeholder="与刊登表单 brand 一致" /></label>
+          <label>制造商<input id="scoreManufacturer" maxlength="50" placeholder="默认与品牌相同" /></label>
+          <label id="scoreImgsWrap">图片数量
+            <input id="scoreImgs" type="number" min="0" max="9" placeholder="留空=未关联" />
+            <span id="scoreImgsHint" class="field-hint inline-hint">从产品页导入可自动带入；直接粘贴 Listing 时可留空，图片合规分将跳过</span>
+          </label>
+          <label>Product Type<input id="scoreCat" placeholder="如 AUTO_PART / HARDWARE_TUBING" /></label>
+          <label class="score-meta-wide">Category Path<input id="scoreCatPath" placeholder="Browse 分类路径，如 Automotive>Replacement Parts" /></label>
+          <label id="scoreMskuWrap">Parent SKU
+            <input id="scoreMsku" maxlength="40" placeholder="与产品页 Parent SKU 一致，导入后自动锁定" />
+            <span id="scoreMskuHint" class="field-hint inline-hint">从产品页导入可自动带入；刊登时作为 MSKU</span>
+          </label>
+          <label>售价 (USD)<input id="scorePrice" type="number" step="0.01" min="0" placeholder="如 19.99" /></label>
+          <label class="score-meta-wide score-confirm-row" for="scoreAiConfirm">
+            <input type="checkbox" id="scoreAiConfirm" />
+            <span class="score-confirm-text">AI 二次确认（每维度跑 2 次取平均，更稳定，耗时约 10 倍）</span>
+          </label>
+        </div>
+      </div>
+
+      <button class="btn primary btn-lg" id="runScore">AI 详细诊断</button>
+      <span id="scoreStatus" class="status-text hidden"></span>
+    </section>
+
+    <div id="diagnosisContainer" class="hidden"></div>
   </main>
 
   <div class="toast" id="toast"></div>
-  <script src="listing-tools.js?v=1"></script>
+  <script src="listing-tools.js?v=12"></script>
 </body>
 </html>

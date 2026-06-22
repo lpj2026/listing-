@@ -1,6 +1,15 @@
 "use strict";
 
 const BASE = (window.location.pathname.startsWith("/listing") ? "/listing" : "");
+let imagesLinked = false;
+let mskuLinked = false;
+let importedProductContext = {};
+
+function createProductHref() {
+  const path = window.location.pathname || "";
+  if (path.startsWith("/listing")) return "/listing/create-product";
+  return "create-product";
+}
 
 async function apiPost(path, payload) {
   const res = await fetch(`${BASE}${path}`, {
@@ -27,127 +36,19 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-// ── Mode Switching ───────────────────────────────────────────
-
-let currentMode = "generate";
-document.querySelectorAll(".mode-tab").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    currentMode = btn.dataset.mode;
-    document.querySelectorAll(".mode-tab").forEach((b) => b.classList.toggle("active", b === btn));
-    document.querySelector("#mode-generate").classList.toggle("hidden", currentMode !== "generate");
-    document.querySelector("#mode-score").classList.toggle("hidden", currentMode !== "score");
-  });
-});
-
-// ── Generator ────────────────────────────────────────────────
-
-document.querySelector("#runGenerate").addEventListener("click", async () => {
-  const name = document.querySelector("#genName").value.trim();
-  if (!name) { showToast("请填写产品名称"); return; }
-
-  const positioning = [];
-  document.querySelectorAll('input[name="positioning"]:checked').forEach((cb) => positioning.push(cb.value));
-
-  const payload = {
-    product_name: name,
-    category: document.querySelector("#genCategory").value,
-    price: parseFloat(document.querySelector("#genPrice").value) || null,
-    material: document.querySelector("#genMaterial").value.trim(),
-    process: document.querySelector("#genProcess").value.trim(),
-    spec1_name: document.querySelector("#genSpec1Name").value.trim(),
-    spec1_value: document.querySelector("#genSpec1Value").value.trim(),
-    spec2_name: document.querySelector("#genSpec2Name").value.trim(),
-    spec2_value: document.querySelector("#genSpec2Value").value.trim(),
-    differentiator: document.querySelector("#genDiff").value.trim(),
-    audience: document.querySelector("#genAudience").value.trim(),
-    competitor_asin: document.querySelector("#genAsin").value.trim(),
-    positioning,
-  };
-
-  const btn = document.querySelector("#runGenerate");
-  const status = document.querySelector("#genStatus");
-  btn.disabled = true;
-  status.textContent = "AI 正在分析产品并生成多套方案...";
-  status.classList.remove("hidden");
-
-  try {
-    const result = await apiPost("/api/listing/generate", payload);
-    renderPlans(result.data);
-    status.textContent = "";
-    status.classList.add("hidden");
-  } catch (e) {
-    showToast(e.message);
-    status.textContent = "";
-    status.classList.add("hidden");
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-function renderPlans(data) {
-  const container = document.querySelector("#plansContainer");
-  container.classList.remove("hidden");
-  const plans = data.plans || [];
-  if (!plans.length) { container.innerHTML = '<div class="card"><p>未生成任何方案</p></div>'; return; }
-
-  const strategyIcons = { "专业性能型": "⚙️", "高性价比实用型": "💰", "性价比实用型": "💰", "高端品质型": "👑", "环保健康型": "🌿" };
-
-  container.innerHTML = plans.map((plan, i) => `
-    <div class="plan-card">
-      <div class="plan-header">
-        <span class="plan-num">${String.fromCharCode(65 + i)}</span>
-        <span class="plan-strategy">${strategyIcons[plan.strategy] || "📋"} ${escapeHtml(plan.strategy || "方案 " + (i + 1))}</span>
-      </div>
-      ${plan.reasoning ? `<div class="plan-reasoning"><strong>策略逻辑：</strong>${escapeHtml(plan.reasoning)}</div>` : ""}
-      <div class="plan-meta">
-        ${plan.buyer_profile ? `<span><strong>目标买家：</strong>${escapeHtml(plan.buyer_profile)}</span>` : ""}
-        ${plan.expected_benefit ? `<span><strong>预期效果：</strong>${escapeHtml(plan.expected_benefit)}</span>` : ""}
-      </div>
-      <div class="plan-body">
-        <div class="plan-field">
-          <div class="plan-field-label">标题</div>
-          <div class="plan-field-value">${escapeHtml(plan.title || "")}</div>
-        </div>
-        ${(plan.bullets || []).map((b, j) => `
-          <div class="plan-field">
-            <div class="plan-field-label">Bullet Point ${j + 1}</div>
-            <div class="plan-field-value">${escapeHtml(b || "")}</div>
-          </div>
-        `).join("")}
-        <div class="plan-field">
-          <div class="plan-field-label">产品描述</div>
-          <div class="plan-field-value">${escapeHtml(plan.description || "")}</div>
-        </div>
-        <div class="plan-field">
-          <div class="plan-field-label">Search Terms</div>
-          <div class="plan-field-value">${escapeHtml(plan.search_terms || "")}</div>
-        </div>
-      </div>
-      <div class="plan-actions">
-        <button class="btn primary btn-sm apply-plan" data-plan='${JSON.stringify({title: plan.title, bullets: plan.bullets, description: plan.description, search_terms: plan.search_terms}).replace(/'/g, "&#39;")}'>选用此方案 → 填入产品表单</button>
-      </div>
-    </div>
-  `).join("");
-
-  // Bind apply buttons
-  container.querySelectorAll(".apply-plan").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const plan = JSON.parse(btn.dataset.plan);
-      localStorage.setItem("listing_apply", JSON.stringify(plan));
-      showToast("方案已暂存，切换到产品页将自动提示填入");
-      setTimeout(() => { window.location.href = "create-product"; }, 800);
-    });
-  });
-}
-
 // ── Scorer ───────────────────────────────────────────────────
 
-document.querySelector("#runScore").addEventListener("click", async () => {
-  const title = document.querySelector("#scoreTitle").value.trim();
-  if (!title) { showToast("请填写标题"); return; }
-
-  const payload = {
-    title,
+function getScorePayload() {
+  const priceRaw = document.querySelector("#scorePrice")?.value?.trim();
+  const price = priceRaw ? parseFloat(priceRaw) : null;
+  const imgsRaw = document.querySelector("#scoreImgs")?.value?.trim();
+  let image_count = null;
+  if (imgsRaw !== "" && imgsRaw != null) {
+    const n = parseInt(imgsRaw, 10);
+    if (Number.isFinite(n) && n >= 0) image_count = n;
+  }
+  return {
+    title: document.querySelector("#scoreTitle").value.trim(),
     bullets: [
       document.querySelector("#scoreB1").value.trim(),
       document.querySelector("#scoreB2").value.trim(),
@@ -157,10 +58,27 @@ document.querySelector("#runScore").addEventListener("click", async () => {
     ].filter(Boolean),
     description: document.querySelector("#scoreDesc").value.trim(),
     search_terms: document.querySelector("#scoreST").value.trim(),
-    image_count: parseInt(document.querySelector("#scoreImgs").value) || 0,
-    price: parseFloat(document.querySelector("#scoreCat").value) || null,
+    image_count,
+    images_linked: imagesLinked,
+    msku_linked: mskuLinked,
+    price: Number.isFinite(price) ? price : null,
+    product_type: document.querySelector("#scoreCat").value.trim(),
     category: document.querySelector("#scoreCat").value.trim(),
+    category_path: document.querySelector("#scoreCatPath")?.value?.trim() || "",
+    brand: document.querySelector("#scoreBrand")?.value?.trim() || "",
+    manufacturer: document.querySelector("#scoreManufacturer")?.value?.trim()
+      || document.querySelector("#scoreBrand")?.value?.trim() || "",
+    msku: document.querySelector("#scoreMsku")?.value?.trim() || "",
+    seller_sku: document.querySelector("#scoreMsku")?.value?.trim() || "",
+    parent_sku: document.querySelector("#scoreMsku")?.value?.trim() || "",
+    ai_confirm: document.querySelector("#scoreAiConfirm")?.checked || false,
+    ...importedProductContext,
   };
+}
+
+document.querySelector("#runScore").addEventListener("click", async () => {
+  const payload = getScorePayload();
+  if (!payload.title) { showToast("请填写标题"); return; }
 
   const btn = document.querySelector("#runScore");
   const status = document.querySelector("#scoreStatus");
@@ -189,25 +107,33 @@ function renderDiagnosis(data) {
   const scoreColor = data.overall_score >= 85 ? "#389e0d" : data.overall_score >= 70 ? "#2185d0" : data.overall_score >= 55 ? "#d48806" : "#cf1322";
 
   const dimLabels = { title: "标题质量", bullets: "Bullet Points", description: "描述质量", keywords: "关键词与搜索", compliance: "合规与展示" };
+  const dimWeights = { title: 25, bullets: 25, description: 20, keywords: 15, compliance: 15 };
 
   const dimsHtml = Object.entries(data.dimensions || {}).map(([key, dim]) => {
-    const pct = Math.round((dim.score / dim.max) * 100);
+    const max = dim.max || dimWeights[key] || 20;
+    const pct = Math.round((dim.score / max) * 100);
     const barColor = pct >= 80 ? "#389e0d" : pct >= 60 ? "#d48806" : "#cf1322";
+    const weightTag = dim.weight_pct ? ` · 权重 ${dim.weight_pct}%` : "";
     const positivesHtml = (dim.positives || []).length
       ? `<div class="dim-positives">${(dim.positives || []).join("；")}</div>` : "";
-    const issuesHtml = (dim.issues || []).map((issue) => `
+    const issuesHtml = (dim.issues || []).map((issue) => {
+      const src = issue.source || "ai";
+      const srcClass = src === "rule" ? "src-rule" : src === "publish" ? "src-publish" : "src-ai";
+      const srcLabel = src === "rule" ? "规则" : src === "publish" ? "刊登" : "AI";
+      return `
       <div class="dim-issue">
-        <div class="issue-title">${escapeHtml(issue.issue || "")}</div>
-        <div class="issue-detail"><span class="issue-detail-label">为什么重要</span><span class="issue-detail-value">${escapeHtml(issue.why_matters || "")}</span></div>
+        <div class="issue-title"><span class="issue-src ${srcClass}">${srcLabel}</span>${escapeHtml(issue.issue || "")}</div>
+        ${issue.why_matters ? `<div class="issue-detail"><span class="issue-detail-label">为什么重要</span><span class="issue-detail-value">${escapeHtml(issue.why_matters)}</span></div>` : ""}
         <div class="issue-detail"><span class="issue-detail-label">如何改进</span><span class="issue-detail-value">${escapeHtml(issue.how_to_fix || "")}</span></div>
-        <div class="issue-detail"><span class="issue-detail-label">预计效果</span><span class="issue-detail-value">${escapeHtml(issue.expected_gain || "")}</span></div>
-      </div>
-    `).join("");
+        ${issue.expected_gain ? `<div class="issue-detail"><span class="issue-detail-label">预计效果</span><span class="issue-detail-value">${escapeHtml(issue.expected_gain)}</span></div>` : ""}
+      </div>`;
+    }).join("");
     return `<div class="dim-card">
       <div class="dim-header">
-        <span class="dim-name">${dimLabels[key] || key}</span>
-        <span class="dim-score-badge" style="background:${barColor}20;color:${barColor}">${dim.score}/${dim.max} (${pct}%)</span>
+        <span class="dim-name">${dimLabels[key] || key}${weightTag}</span>
+        <span class="dim-score-badge" style="background:${barColor}20;color:${barColor}">${dim.score}/${max} (${pct}%)</span>
       </div>
+      ${dim.rule_score != null ? `<div class="dim-subscore">规则 ${dim.rule_score} + AI ${dim.ai_score}</div>` : ""}
       ${positivesHtml}
       <div class="dim-issues">${issuesHtml}</div>
     </div>`;
@@ -216,36 +142,76 @@ function renderDiagnosis(data) {
   const priorityHtml = (data.top_priority || []).length
     ? `<div class="diag-priority"><h3>⚡ 优先处理</h3><ol>${data.top_priority.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol></div>` : "";
 
-  // Save current listing data for optimize
-  container._listingData = {
-    title: document.querySelector("#scoreTitle").value.trim(),
-    bullets: [1,2,3,4,5].map(i => document.querySelector("#scoreB" + i)?.value?.trim() || "").filter(Boolean),
-    description: document.querySelector("#scoreDesc").value.trim(),
-    search_terms: document.querySelector("#scoreST").value.trim(),
-    category: document.querySelector("#scoreCat").value.trim(),
-  };
+  const breakdownHtml = data.rule_score != null
+    ? `<div class="diag-breakdown">加权分 · 规则 ${data.rule_score} + AI ${data.ai_score ?? "?"} = ${data.overall_score}/100 · ${data.rule_checks ? data.rule_checks.filter((c) => c.passed).length : "?"}/${data.rule_checks?.length || "?"} 项规则通过${data.ai_scoring_mode === "per_dimension" ? " · 分维 AI" : ""}${data.rule_cached ? " · 规则缓存" : ""}${data.ai_confirm ? " · AI 二次确认" : ""}</div>` : "";
+
+  const pub = data.publish_readiness;
+  const publishHtml = pub
+    ? `<div class="publish-ready-card ${pub.ready ? "ready" : "warn"}">
+        <h3>刊登就绪度 <span class="rule-checks-meta">${pub.checks_passed}/${pub.checks_total} · ${pub.score}/100${pub.ready ? " · 可尝试刊登" : ""}</span></h3>
+        <div class="publish-checks">
+          ${(pub.checks || []).map((c) => `
+            <div class="rule-check-item ${c.passed ? "pass" : "fail"}">
+              <span class="rule-check-icon">${c.passed ? "✓" : "✗"}</span>
+              <span class="rule-check-msg">${escapeHtml(c.message || c.id || "")}</span>
+            </div>`).join("")}
+        </div>
+      </div>`
+    : "";
+
+  const imageSkipHtml = data.image_score_skipped
+    ? `<div class="diag-image-skip">未关联产品图，图片合规项已跳过 — 合规分仅供参考。建议从产品页导入或填写图片数量。</div>`
+    : "";
+
+  const ruleDimLabels = { title: "标题", bullets: "Bullets", description: "描述", keywords: "关键词", compliance: "合规" };
+  const ruleChecksHtml = (data.rule_checks || []).length
+    ? `<div class="rule-checks-card">
+        <h3>Amazon 规则校验 <span class="rule-checks-meta">${(data.rule_checks.filter((c) => c.passed).length)}/${data.rule_checks.length} 通过</span></h3>
+        <div class="rule-checks-grid">
+          ${Object.keys(ruleDimLabels).map((dim) => {
+            const items = data.rule_checks.filter((c) => c.dimension === dim);
+            if (!items.length) return "";
+            return `<div class="rule-check-group">
+              <div class="rule-check-dim">${ruleDimLabels[dim]}</div>
+              ${items.map((c) => `
+                <div class="rule-check-item ${c.passed ? "pass" : "fail"}${c.skipped ? " skipped" : ""}">
+                  <span class="rule-check-icon">${c.skipped ? "○" : c.passed ? "✓" : "✗"}</span>
+                  <span class="rule-check-msg">${escapeHtml(c.message || c.id || "")}</span>
+                  <span class="rule-check-pts">${c.points}/${c.max_points}</span>
+                </div>`).join("")}
+            </div>`;
+          }).join("")}
+        </div>
+      </div>` : "";
+
+  container._listingData = getScorePayload();
   container._scoreResult = data;
 
   container.innerHTML = `
     <div class="diag-header" style="border-color:${scoreColor}">
       <div class="diag-score" style="color:${scoreColor}">${data.overall_score}<span style="font-size:16px;color:#999">/100</span></div>
-      <div class="diag-grade" style="color:${scoreColor}">${escapeHtml(data.overall_grade || "")}</div>
+      <div>
+        <div class="diag-grade" style="color:${scoreColor}">${escapeHtml(data.overall_grade || "")}</div>
+        ${breakdownHtml}
+      </div>
       <div class="diag-summary">${escapeHtml(data.overall_summary || "")}</div>
     </div>
+    ${imageSkipHtml}
+    ${publishHtml}
     ${priorityHtml}
+    ${ruleChecksHtml}
     ${dimsHtml}
     <div class="optimize-bar">
       <button class="btn primary btn-lg" id="runOptimize">根据诊断结果生成优化方案</button>
-      <p class="section-desc" style="margin-top:8px">AI 将针对每个问题给出为什么优化、优化能带来什么好处、以及优化后的文案</p>
+      <p class="section-desc" style="margin-top:8px">AI 将针对每个问题给出优化文案，并自动复评验证提升效果</p>
     </div>
     <div id="optimizeResult" class="hidden"></div>
   `;
 
-  // Bind optimize button
   document.querySelector("#runOptimize")?.addEventListener("click", async () => {
     const btn = document.querySelector("#runOptimize");
     btn.disabled = true;
-    btn.textContent = "AI 正在生成针对性优化方案...";
+    btn.textContent = "AI 正在优化并复评...";
     try {
       const result = await apiPost("/api/listing/optimize", {
         listing_data: container._listingData,
@@ -261,25 +227,51 @@ function renderDiagnosis(data) {
   });
 }
 
+function renderDimDelta(beforeDims, afterDims) {
+  const labels = { title: "标题", bullets: "Bullets", description: "描述", keywords: "关键词", compliance: "合规" };
+  return Object.keys(labels).map((key) => {
+    const b = (beforeDims[key] || {}).score ?? 0;
+    const a = (afterDims[key] || {}).score ?? 0;
+    const delta = a - b;
+    const deltaText = delta > 0 ? `+${delta}` : delta === 0 ? "—" : String(delta);
+    const deltaColor = delta > 0 ? "#389e0d" : delta < 0 ? "#cf1322" : "#999";
+    return `<div class="dim-delta-row">
+      <span>${labels[key]}</span>
+      <span>${b} → ${a}</span>
+      <span style="color:${deltaColor};font-weight:600">${deltaText}</span>
+    </div>`;
+  }).join("");
+}
+
 function renderOptimizations(data) {
   const container = document.querySelector("#optimizeResult");
   container.classList.remove("hidden");
 
-  // Score comparison
   const sc = data.score_comparison || {};
-  const compHtml = sc.original_score ? `
-    <div class="score-compare">
+  const rescore = data.rescore || {};
+  const delta = sc.score_delta ?? ((sc.verified_new_score || 0) - (sc.original_score || 0));
+  const deltaColor = delta > 0 ? "#389e0d" : delta < 0 ? "#cf1322" : "#999";
+
+  const compHtml = sc.original_score != null ? `
+    <div class="score-compare verified">
+      <div class="score-compare-badge">✓ 复评 verified</div>
       <div class="score-compare-item before">
         <div class="score-compare-num">${sc.original_score}</div>
-        <div class="score-compare-label">优化前</div>
+        <div class="score-compare-label">优化前 · ${escapeHtml(sc.original_grade || "")}</div>
       </div>
       <div class="score-compare-arrow">→</div>
       <div class="score-compare-item after">
-        <div class="score-compare-num">${sc.estimated_new_score || '?'}</div>
-        <div class="score-compare-label">预估优化后</div>
+        <div class="score-compare-num">${sc.verified_new_score ?? sc.estimated_new_score ?? "?"}</div>
+        <div class="score-compare-label">复评后 · ${escapeHtml(sc.verified_grade || rescore.overall_grade || "")}</div>
       </div>
+      <div class="score-delta" style="color:${deltaColor}">${delta > 0 ? "+" : ""}${delta} 分</div>
       ${sc.why_improved ? `<div class="score-compare-reason">${escapeHtml(sc.why_improved)}</div>` : ""}
     </div>
+    ${rescore.dimensions ? `
+      <div class="rescore-delta-card">
+        <h3>各维度复评对比</h3>
+        ${renderDimDelta((document.querySelector("#diagnosisContainer")._scoreResult || {}).dimensions || {}, rescore.dimensions)}
+      </div>` : ""}
   ` : "";
 
   const optsHtml = (data.optimizations || []).map((opt, i) => `
@@ -311,6 +303,7 @@ function renderOptimizations(data) {
   ` : "";
 
   container.innerHTML = `
+    ${compHtml}
     ${data.overall_strategy ? `<div class="opt-strategy"><strong>整体优化策略：</strong>${escapeHtml(data.overall_strategy)}</div>` : ""}
     <h3 style="margin:16px 0 10px;font-size:15px">逐项优化建议</h3>
     ${optsHtml}
@@ -321,11 +314,138 @@ function renderOptimizations(data) {
     const listing = JSON.parse(container.querySelector(".apply-optimized").dataset.listing);
     localStorage.setItem("listing_apply", JSON.stringify(listing));
     showToast("优化方案已暂存，切换到产品页将自动填入");
-    setTimeout(() => { window.location.href = "create-product"; }, 800);
+    setTimeout(() => { window.location.href = createProductHref(); }, 800);
   });
 }
 
 // ── Import from product page ─────────────────────────────────
+
+function parseImageCount(data) {
+  if (data.image_count != null && data.image_count !== "") {
+    const n = parseInt(data.image_count, 10);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  if (data.product_images) {
+    try {
+      const imgs = typeof data.product_images === "string"
+        ? JSON.parse(data.product_images)
+        : data.product_images;
+      if (Array.isArray(imgs)) return imgs.filter(Boolean).length;
+    } catch (e) { /* ignore */ }
+  }
+  return 0;
+}
+
+function resolveParentSku(data) {
+  return String(data.parent_sku || data.seller_sku || data.msku || "").trim();
+}
+
+function applyImportData(data) {
+  const filled = [];
+  const missing = [];
+
+  const set = (id, value, label) => {
+    const el = document.querySelector(id);
+    if (!el) return;
+    const text = value != null ? String(value).trim() : "";
+    if (text) {
+      el.value = text;
+      if (label) filled.push(label);
+    } else if (label) {
+      missing.push(label);
+    }
+  };
+
+  set("#scoreTitle", data.item_name, "标题");
+  for (let i = 1; i <= 5; i++) {
+    const val = data["bullet_point_" + i];
+    const el = document.querySelector("#scoreB" + i);
+    if (el && val && String(val).trim()) {
+      el.value = String(val).trim();
+      if (i === 1) filled.push("Bullets");
+    }
+  }
+  set("#scoreDesc", data.product_description, "描述");
+  set("#scoreST", data.generic_keyword, "Search Terms");
+  set("#scoreCat", data.product_type, "Product Type");
+  set("#scoreCatPath", data.category_path, "Category Path");
+  set("#scoreBrand", data.brand, "品牌");
+  set("#scoreManufacturer", data.manufacturer || data.brand, "制造商");
+
+  const parentSku = resolveParentSku(data);
+  const mskuEl = document.querySelector("#scoreMsku");
+  if (mskuEl) {
+    if (parentSku) {
+      mskuEl.value = parentSku;
+      filled.push("Parent SKU");
+      mskuLinked = true;
+      mskuEl.readOnly = true;
+      mskuEl.classList.add("readonly-field");
+      const hint = document.querySelector("#scoreMskuHint");
+      if (hint) hint.textContent = `已从产品页导入 Parent SKU（锁定）`;
+    } else {
+      mskuEl.value = "";
+      mskuEl.readOnly = false;
+      mskuEl.classList.remove("readonly-field");
+      missing.push("Parent SKU");
+    }
+  }
+
+  const priceEl = document.querySelector("#scorePrice");
+  if (priceEl && data.price != null && String(data.price).trim() !== "") {
+    priceEl.value = data.price;
+    filled.push("售价");
+  } else {
+    missing.push("售价");
+  }
+
+  const imgCount = parseImageCount(data);
+  const imgsEl = document.querySelector("#scoreImgs");
+  if (imgsEl) {
+    if (imgCount > 0) {
+      imgsEl.value = String(imgCount);
+      filled.push(`图片(${imgCount}张)`);
+      imagesLinked = true;
+      imgsEl.readOnly = true;
+      imgsEl.classList.add("readonly-field");
+      const hint = document.querySelector("#scoreImgsHint");
+      if (hint) hint.textContent = `已从产品页导入 ${imgCount} 张图片（锁定）`;
+    } else {
+      imgsEl.value = "";
+      imgsEl.readOnly = false;
+      imgsEl.classList.remove("readonly-field");
+      missing.push("图片");
+    }
+  }
+
+  if (data.category_path) filled.push("分类路径");
+
+  const SKIP_CTX = new Set([
+    "item_name", "product_description", "generic_keyword", "product_type",
+    "category_path", "brand", "manufacturer", "price", "product_images",
+    "image_count", "parent_sku", "seller_sku", "msku", "msku_linked",
+    "bullet_point_1", "bullet_point_2", "bullet_point_3", "bullet_point_4", "bullet_point_5",
+  ]);
+  importedProductContext = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (SKIP_CTX.has(key) || val == null || String(val).trim() === "") continue;
+    importedProductContext[key] = String(val).trim();
+  }
+
+  return { filled, missing };
+}
+
+function showImportBanner(filled, missing) {
+  const slot = document.querySelector("#importBannerSlot");
+  if (!slot) return;
+  const filledHtml = filled.length
+    ? `<span class="import-tag ok">已导入 ${filled.join("、")}</span>`
+    : "";
+  const missingHtml = missing.length
+    ? `<span class="import-tag warn">未填写 ${missing.join("、")}，可在下方补充</span>`
+    : "";
+  slot.innerHTML = `<div class="import-banner"><strong>来自产品页导入</strong> ${filledHtml} ${missingHtml}</div>`;
+}
 
 (function checkImport() {
   const raw = localStorage.getItem("listing_import_data");
@@ -336,42 +456,8 @@ function renderOptimizations(data) {
 
   localStorage.removeItem("listing_import_data");
 
-  // Build a summary of what was imported
-  const fields = [];
-  if (data.item_name) fields.push("标题");
-  if (data.product_type) fields.push("产品类型");
-  if (data.brand) fields.push("品牌");
-  if (data.manufacturer) fields.push("制造商");
-  for (let i = 1; i <= 5; i++) if (data["bullet_point_" + i]) { fields.push("Bullet Points"); break; }
-  if (data.product_description) fields.push("描述");
-  if (data.generic_keyword) fields.push("Search Terms");
+  const { filled, missing } = applyImportData(data);
+  showImportBanner(filled, missing);
 
-  // Auto-fill scorer form
-  if (data.item_name) document.querySelector("#scoreTitle").value = data.item_name;
-  for (let i = 1; i <= 5; i++) {
-    const el = document.querySelector("#scoreB" + i);
-    if (el && data["bullet_point_" + i]) el.value = data["bullet_point_" + i];
-  }
-  if (data.product_description) document.querySelector("#scoreDesc").value = data.product_description;
-  if (data.generic_keyword) document.querySelector("#scoreST").value = data.generic_keyword;
-  if (data.product_type) document.querySelector("#scoreCat").value = data.product_type;
-
-  // Also pre-fill generator
-  if (data.item_name) document.querySelector("#genName").value = data.item_name;
-  if (data.product_type) document.querySelector("#genCategory").value = data.product_type;
-  if (data.generic_keyword) document.querySelector("#genDiff").value = "关键词: " + data.generic_keyword;
-
-  // Switch to scorer and auto-run
-  const scoreTab = document.querySelector('.mode-tab[data-mode="score"]');
-  if (scoreTab) scoreTab.click();
-
-  showToast("已导入 " + fields.length + " 项产品数据，点击「AI 详细诊断」开始评分");
-
-  // Add import summary banner
-  const banner = document.createElement("div");
-  banner.className = "import-banner";
-  banner.innerHTML = "<strong>来自产品页导入</strong> 已自动填入评分表单（" + fields.join("、") + "）。评分后可切换到「生成文案」获取针对性优化方案。";
-  const card = document.querySelector("#mode-score .card");
-  if (card) card.insertBefore(banner, card.firstChild);
+  showToast(`已导入 ${filled.length} 项，${missing.length ? "请补充 " + missing.join("、") : "可开始诊断"}`);
 })();
-

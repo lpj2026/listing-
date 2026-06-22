@@ -358,6 +358,25 @@ function createSelect(name, options, placeholder = "请选择") {
   return select;
 }
 
+function fallbackUnitOptions(field) {
+  const key = String(field?.key || "").toLowerCase();
+  if (key === "load_capacity") {
+    return [
+      { value: "pounds", label: "LBS(磅)" },
+      { value: "kilograms", label: "KG(公斤)" },
+      { value: "ounces", label: "OZ(盎司)" },
+      { value: "grams", label: "G(克)" },
+    ];
+  }
+  return [];
+}
+
+function resolvedUnitOptions(field) {
+  const normalized = normalizeSelectOptions(field?.unit_options);
+  if (normalized.length) return normalized;
+  return fallbackUnitOptions(field);
+}
+
 function createSearchableSelect(name, options, field) {
   const wrap = document.createElement("div");
   wrap.className = "dxm-search-select";
@@ -826,8 +845,9 @@ function renderAttributeField(field) {
     input.step = field.step || "any";
     applyFieldConstraints(input, field);
     applyFieldDefault(input, field);
-    const unitSelect = createSelect(`attr_${field.unit_key}`, field.unit_options, "单位");
-    applyFieldDefault(unitSelect, { default: field.unit_default });
+    const unitOptions = resolvedUnitOptions(field);
+    const unitSelect = createSelect(`attr_${field.unit_key}`, unitOptions, "单位");
+    applyFieldDefault(unitSelect, { default: field.unit_default || unitOptions[0]?.value });
     unitRow.appendChild(input);
     unitRow.appendChild(unitSelect);
     content.appendChild(unitRow);
@@ -991,6 +1011,10 @@ function buildAttributeRuleContext(data) {
   if (data.quantity) {
     context.fulfillment_availability = "present";
   }
+  if (data.product_id) {
+    context.attr_externally_assigned_product_identifier = data.product_id;
+    context.externally_assigned_product_identifier = data.product_id;
+  }
   if (data.upc_exemption === "yes") {
     context.attr_supplier_declared_has_product_identifier_exemption = "true";
     context.supplier_declared_has_product_identifier_exemption = "True";
@@ -1035,8 +1059,17 @@ function ruleMatches(rule, data) {
   return conditions.length > 0 && conditions.every((condition) => conditionMatches(condition, data));
 }
 
-function computeAttributeFields(fields, data = formToObject()) {
+function matchedRequiredAttributeKeys(data = formToObject()) {
   const requiredKeys = new Set(currentBaselineRequired || []);
+  (currentAttributeRules || []).forEach((rule) => {
+    if (!ruleMatches(rule, data)) return;
+    (rule.require || []).forEach((key) => requiredKeys.add(key));
+  });
+  return requiredKeys;
+}
+
+function computeAttributeFields(fields, data = formToObject()) {
+  const requiredKeys = matchedRequiredAttributeKeys(data);
   const shownKeys = new Set(currentBaselineRequired || []);
   (currentAttributeRules || []).forEach((rule) => {
     if (!ruleMatches(rule, data)) return;
@@ -1212,7 +1245,25 @@ function collectFormData() {
   if (pt) data["product_type"] = pt;
   const cat = document.querySelector("#categoryPath")?.value;
   if (cat) data["category_path"] = cat;
+  const parentSku = document.querySelector("#parentSkuInput")?.value?.trim();
+  if (parentSku) {
+    data["parent_sku"] = parentSku;
+    data["msku"] = parentSku;
+    data["seller_sku"] = parentSku;
+  }
   return data;
+}
+
+function listingToolsHref() {
+  const path = window.location.pathname || "";
+  if (path.startsWith("/listing")) return "/listing/listing-tools";
+  return "listing-tools";
+}
+
+function createProductHref() {
+  const path = window.location.pathname || "";
+  if (path.startsWith("/listing")) return "/listing/create-product";
+  return "create-product";
 }
 
 function importToListingTools() {
@@ -1221,9 +1272,21 @@ function importToListingTools() {
     showToast("请至少填写产品标题或选择产品分类");
     return;
   }
+
+  let images = [];
+  try {
+    const raw = document.querySelector("#productImagesData")?.value;
+    if (raw) images = JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  if (!images.length && Array.isArray(productImages) && productImages.length) {
+    images = productImages;
+  }
+  data.image_count = images.length;
+  if (images.length) data.product_images = images;
+
   localStorage.setItem("listing_import_data", JSON.stringify(data));
-  showToast("产品数据已导入，正在跳转到 Listing 分析...");
-  setTimeout(() => { window.location.href = "listing-tools"; }, 600);
+  showToast("产品数据已导入，正在跳转到 Listing 评分...");
+  setTimeout(() => { window.location.href = listingToolsHref(); }, 600);
 }
 
 function setFieldValue(name, value) {
@@ -1366,10 +1429,11 @@ function applySchemaAttribute(attributes, field, data, marketplaceId) {
   if (field.type === "unit") {
     const value = data[`attr_${field.key}`];
     if (!value) return;
+    const unitOptions = resolvedUnitOptions(field);
     attributes[field.key] = [
       {
         value: Number(value),
-        unit: data[`attr_${field.unit_key}`] || field.unit_default || "",
+        unit: data[`attr_${field.unit_key}`] || field.unit_default || unitOptions[0]?.value || "",
         marketplace_id: marketplaceId,
       },
     ];
@@ -1569,6 +1633,11 @@ function buildAttributes(data) {
   if (data.upc_exemption === "yes") {
     attributes.supplier_declared_has_product_identifier_exemption = plainValue(true);
   } else if (data.product_id) {
+    // When UPC/GTIN is provided without exemption, send explicit false
+    // so Amazon can validate the external ID properly.
+    attributes.supplier_declared_has_product_identifier_exemption = plainValue(false);
+  }
+  if (data.product_id) {
     attributes.externally_assigned_product_identifier = [
       {
         type: data.product_id_type,
@@ -1830,6 +1899,7 @@ function syncProductIdState() {
   const productIdType = document.querySelector("#productIdType");
   const autoFetchBtn = document.querySelector("#autoFetchProductId");
   const productIdRow = document.querySelector("#productIdRow");
+  const productIdHint = document.querySelector("#productIdExemptHint");
   const exempt = isUpcExempt();
   const typeIsUpc = productIdType?.value === "UPC";
   const shouldDisable = exempt && typeIsUpc;
@@ -1839,12 +1909,19 @@ function syncProductIdState() {
     if (shouldDisable) {
       productIdInput.value = "";
       productIdRow?.classList.remove("invalid");
+      productIdInput.placeholder = "UPC 豁免已开启，无需填写 UPC";
+      productIdInput.title = "已选择 UPC 豁免，不能同时填写 UPC 编码";
+    } else {
+      productIdInput.placeholder = exempt ? "选填（UPC 豁免时可不填 Product ID）" : "必填项, Product ID";
+      productIdInput.title = exempt ? "已选择 UPC 豁免，除 UPC 外其他类型也可留空" : "";
     }
   }
   if (autoFetchBtn) {
     autoFetchBtn.disabled = shouldDisable;
+    autoFetchBtn.title = shouldDisable ? "UPC 豁免已开启，无法自动获取 UPC" : "";
   }
   productIdRow?.classList.toggle("product-id-exempt", shouldDisable);
+  productIdHint?.classList.toggle("hidden", !shouldDisable);
 }
 
 function syncManufacturerFromBrand() {
@@ -1874,6 +1951,8 @@ function bindBrandManufacturerSync() {
 }
 
 function validateProductInfo() {
+  const data = formToObject();
+  const requiredAttrKeys = matchedRequiredAttributeKeys(data);
   const parentSku = document.querySelector("#parentSkuInput");
   const parentSkuRow = document.querySelector("#parentSkuRow");
   const productIdInput = document.querySelector("#productIdInput");
@@ -1887,7 +1966,8 @@ function validateProductInfo() {
   parentSkuRow?.classList.toggle("invalid", !parentSkuValid);
   if (!parentSkuValid) isValid = false;
 
-  const needProductId = !isUpcExempt();
+  const needProductId =
+    !isUpcExempt() || requiredAttrKeys.has("externally_assigned_product_identifier");
   const productIdValid =
     !needProductId || Boolean(productIdInput?.value.trim() && !productIdInput?.disabled);
   productIdRow?.classList.toggle("invalid", needProductId && !productIdValid);

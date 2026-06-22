@@ -36,7 +36,6 @@ BASELINE_PANEL_SKIP = {
     "fulfillment_availability",
     "merchant_shipping_group",
     "externally_assigned_product_identifier",
-    "merchant_suggested_asin",
     "manufacturer",
     "included_components",
 }
@@ -474,24 +473,62 @@ def _field_constraints(prop: dict[str, Any], value_schema: dict[str, Any]) -> di
     return constraints
 
 
-def _unit_options(prop: dict[str, Any]) -> list[dict[str, str]]:
+def _extract_enum_options(schema: dict[str, Any]) -> list[tuple[str, str]]:
+    if not isinstance(schema, dict):
+        return []
+    enum_values = list(schema.get("enum") or [])
+    enum_names = list(schema.get("enumNames") or schema.get("enum_names") or enum_values)
+    if enum_values:
+        return [
+            (
+                str(value),
+                str(enum_names[index] if index < len(enum_names) else value),
+            )
+            for index, value in enumerate(enum_values)
+        ]
+
+    options: list[tuple[str, str]] = []
+    for key in ("oneOf", "anyOf"):
+        for item in schema.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            enum_value = item.get("const")
+            if enum_value is None:
+                nested = item.get("enum") or []
+                enum_value = nested[0] if nested else None
+            if enum_value is None:
+                continue
+            label = item.get("title") or item.get("description") or enum_value
+            options.append((str(enum_value), str(label)))
+    return options
+
+
+def _unit_options(key: str, prop: dict[str, Any]) -> list[dict[str, str]]:
     unit_schema = _item_properties(prop).get("unit")
     if not isinstance(unit_schema, dict):
-        return []
-    enum_values = unit_schema.get("enum") or []
-    enum_names = unit_schema.get("enumNames") or enum_values
-    return [
-        {
-            "value": str(value),
-            "label": (
-                f"{enum_names[index] if index < len(enum_names) else value}"
-                f"({VALUE_ZH_LABELS[str(value)]})"
-                if str(value) in VALUE_ZH_LABELS
-                else str(enum_names[index] if index < len(enum_names) else value)
-            ),
-        }
-        for index, value in enumerate(enum_values)
-    ]
+        unit_schema = {}
+
+    options = _extract_enum_options(unit_schema)
+    if not options:
+        value_schema = (unit_schema.get("properties") or {}).get("value")
+        if isinstance(value_schema, dict):
+            options = _extract_enum_options(value_schema)
+
+    if not options and key == "load_capacity":
+        options = [
+            ("pounds", "LBS"),
+            ("kilograms", "KG"),
+            ("ounces", "OZ"),
+            ("grams", "G"),
+        ]
+
+    result: list[dict[str, str]] = []
+    for value_text, label_text in options:
+        zh = VALUE_ZH_LABELS.get(value_text) or VALUE_ZH_LABELS.get(label_text)
+        if zh and zh not in label_text:
+            label_text = f"{label_text}({zh})"
+        result.append({"value": value_text, "label": label_text})
+    return result
 
 
 def _schema_required_keys(schema: dict[str, Any]) -> set[str]:
@@ -680,12 +717,28 @@ def compute_baseline_required(schema: dict[str, Any], rules: list[dict[str, Any]
     """Fields Amazon requires for a typical single-SKU listing (quantity + UPC exemption)."""
     baseline = {key for key in _schema_required_keys(schema) if key not in SKIP_SCHEMA_KEYS}
 
+    def _collect_all_if_then(node: Any):
+        """Recursively collect if/then pairs from nested allOf/anyOf/oneOf."""
+        current = _json_obj(node)
+        if not current:
+            return
+        if current.get("if") and current.get("then"):
+            if _matches_baseline_listing(current["if"]):
+                baseline.update(_extract_required_targets(current["then"]))
+        for key in ("allOf", "anyOf", "oneOf"):
+            for item in current.get(key) or []:
+                _collect_all_if_then(item)
+
     for item in schema.get("allOf") or []:
-        if not isinstance(item, dict) or not item.get("if") or not item.get("then"):
+        if not isinstance(item, dict):
             continue
-        if not _matches_baseline_listing(item["if"]):
-            continue
-        baseline.update(_extract_required_targets(item["then"]))
+        if item.get("if") and item.get("then"):
+            # Direct if/then
+            if _matches_baseline_listing(item["if"]):
+                baseline.update(_extract_required_targets(item["then"]))
+        else:
+            # Nested allOf/anyOf/oneOf inside allOf item
+            _collect_all_if_then(item)
 
     baseline -= BASELINE_PANEL_SKIP
     return expand_required_dimension_keys(baseline)
@@ -841,7 +894,7 @@ def properties_to_fields(
                 field["columns"] = 3
         if field["type"] == "unit":
             field["unit_key"] = f"{key}_unit"
-            field["unit_options"] = _unit_options(prop)
+            field["unit_options"] = _unit_options(key, prop)
             if field["unit_options"]:
                 field["unit_default"] = field["unit_options"][0]["value"]
         if field["type"] == "dimensions":
